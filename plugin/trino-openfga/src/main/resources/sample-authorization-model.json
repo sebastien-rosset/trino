@@ -1,0 +1,438 @@
+{
+  "schema_version": "1.1",
+  "type_definitions": [
+    {
+      "type": "user",
+      "relations": {}
+    },
+    {
+      "type": "system",
+      "relations": {
+        "viewer": {
+          "this": {}
+        },
+        "admin": {
+          "this": {}
+        },
+        "execute_query": {
+          "this": {}
+        },
+        "read": {
+          "this": {}
+        },
+        "write": {
+          "this": {}
+        },
+        "create_catalog": {
+          "this": {}
+        }
+      },
+      "metadata": {
+        "relations": {
+          "viewer": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "admin": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "execute_query": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "read": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "write": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "create_catalog": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "catalog",
+      "relations": {
+        "viewer": {
+          "this": {}
+        },
+        "admin": {
+          "this": {}
+        },
+        "show_schemas": {
+          "this": {}
+        },
+        "create_schema": {
+          "this": {}
+        },
+        "set_session_property": {
+          "this": {}
+        }
+      },
+      "metadata": {
+        "relations": {
+          "viewer": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "admin": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "show_schemas": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "create_schema": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "set_session_property": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "schema",
+      "relations": {
+        "viewer": {
+          "this": {}
+        },
+        "admin": {
+          "this": {}
+        },
+        "drop": {
+          "this": {}
+        },
+        "rename": {
+          "this": {}
+        },
+        "set_authorization": {
+          "this": {}
+        },
+        "show_create": {
+          "this": {}
+        },
+        "show_tables": {
+          "this": {}
+        },
+        "create_table": {
+          "this": {}
+        },
+        "create_view": {
+          "this": {}
+        },
+        "create_materialized_view": {
+          "this": {}
+        },
+        "execute_function": {
+          "this": {}
+        },
+        "execute_procedure": {
+          "this": {}
+        },
+        "parent_catalog": {
+          "this": {}
+        }
+      },
+      "metadata": {
+        "relations": {
+          "viewer": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "admin": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "drop": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "rename": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "set_authorization": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "show_create": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "show_tables": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "create_table": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "create_view": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "create_materialized_view": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "execute_function": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "execute_procedure": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "parent_catalog": {
+            "directly_related_user_types": [
+              { "type": "catalog" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "table",
+      "relations": {
+        "viewer": {
+          "this": {}
+        },
+        "admin": {
+          "this": {}
+        },
+        "drop": {
+          "this": {}
+        },
+        "rename": {
+          "this": {}
+        },
+        "set_properties": {
+          "this": {}
+        },
+        "set_comment": {
+          "this": {}
+        },
+        "set_column_comment": {
+          "this": {}
+        },
+        "set_authorization": {
+          "this": {}
+        },
+        "show_columns": {
+          "this": {}
+        },
+        "add_column": {
+          "this": {}
+        },
+        "rename_column": {
+          "this": {}
+        },
+        "drop_column": {
+          "this": {}
+        },
+        "alter_column": {
+          "this": {}
+        },
+        "select": {
+          "this": {}
+        },
+        "insert": {
+          "this": {}
+        },
+        "delete": {
+          "this": {}
+        },
+        "truncate": {
+          "this": {}
+        },
+        "update": {
+          "this": {}
+        },
+        "show_create": {
+          "this": {}
+        },
+        "execute_procedure": {
+          "this": {}
+        },
+        "create_view_with_select": {
+          "this": {}
+        },
+        "refresh": {
+          "this": {}
+        },
+        "parent_schema": {
+          "this": {}
+        }
+      },
+      "metadata": {
+        "relations": {
+          "viewer": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "admin": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "drop": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "rename": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "set_properties": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "set_comment": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "set_column_comment": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "set_authorization": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "show_columns": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "add_column": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "rename_column": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "drop_column": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "alter_column": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "select": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "insert": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "delete": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "truncate": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "update": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "show_create": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "execute_procedure": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "create_view_with_select": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "refresh": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          },
+          "parent_schema": {
+            "directly_related_user_types": [
+              { "type": "schema" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "system_property",
+      "relations": {
+        "set": {
+          "this": {}
+        }
+      },
+      "metadata": {
+        "relations": {
+          "set": {
+            "directly_related_user_types": [
+              { "type": "user" }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

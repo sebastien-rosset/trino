@@ -1,0 +1,20 @@
+# OpenFGA server configuration
+datastore:
+  engine: postgres
+  uri: postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable
+
+http:
+  port: 8080
+
+authn:
+  method: no_auth
+
+logger:
+  format: json
+
+profiler:
+  enabled: false
+
+playground:
+  port: 3000
+  enabled: true

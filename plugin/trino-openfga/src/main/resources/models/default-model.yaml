@@ -1,0 +1,365 @@
+# OpenFGA Authorization Model for Trino
+schema_version: "1.1"
+
+type_definitions:
+  # User type represents individual users in the system
+  # Users can be directly assigned permissions or grouped into roles
+  - type: user
+    relations:
+      # Impersonate relation allows one user to act as another user
+      impersonate:
+        this: {}
+    metadata:
+      relations:
+        impersonate:
+          directly_related_user_types:
+            - type: user  # Allow users to impersonate other users
+            - type: role  # Allow users with a specific role to impersonate other users
+
+  # Role type enables role-based access control (RBAC)
+  # Roles can contain users and other roles (nested roles)
+  - type: role
+    relations:
+      # Direct member relation
+      member:
+        this: {}
+      # Admin relation for administrative permissions
+      admin:
+        this: {}
+      # Viewer relation for read permissions
+      viewer:
+        this: {}
+      # Permission relation for role-specific permissions
+      permission:
+        this: {}
+    metadata:
+      relations:
+        member:
+          directly_related_user_types:
+            - type: user  # Users can be members of roles
+            - type: role  # Roles can be members of other roles (nesting)
+        admin:
+          directly_related_user_types:
+            - type: user
+            - type: role
+        viewer:
+          directly_related_user_types:
+            - type: user
+            - type: role
+        permission:
+          directly_related_user_types:
+            - type: user
+
+  # System type controls global Trino system permissions
+  # Examples: ability to execute queries, impersonate users
+  - type: system
+    relations:
+      # Permission to execute queries in the system
+      execute_query:
+        this: {}
+      # Permission to impersonate other users
+      impersonate:
+        this: {}
+      # Permission to read system information
+      read:
+        this: {}
+    metadata:
+      relations:
+        execute_query:
+          directly_related_user_types:
+            - type: user
+            - type: role
+        impersonate:
+          directly_related_user_types:
+            - type: user
+            - type: role
+        read:
+          directly_related_user_types:
+            - type: user
+            - type: role
+
+  # Catalog type represents Trino catalogs (collections of schemas)
+  # First level in the data hierarchy: catalog -> schema -> table -> column
+  - type: catalog
+    relations:
+      # Member relation for role membership associations
+      member:
+        this: {}
+      # Viewer relation grants read access to the catalog
+      viewer:
+        union:
+          child:
+            - this: {}  # Direct assignments
+            - tupleToUserset:  # Role-based permissions propagation
+                tupleset:
+                  object: ""
+                  relation: member
+                computedUserset:
+                  relation: viewer
+      # Admin relation grants administrative access to the catalog
+      admin:
+        union:
+          child:
+            - this: {}  # Direct assignments
+            - tupleToUserset:  # Role-based permissions propagation
+                tupleset:
+                  object: ""
+                  relation: member
+                computedUserset:
+                  relation: admin
+    metadata:
+      relations:
+        member:
+          directly_related_user_types:
+            - type: user
+            - type: role
+        viewer:
+          directly_related_user_types:
+            - type: user
+            - type: role
+        admin:
+          directly_related_user_types:
+            - type: user
+            - type: role
+
+  # Schema type represents database schemas within catalogs
+  # Second level in the data hierarchy
+  - type: schema
+    relations:
+      # Member relation for role membership associations
+      member:
+        this: {}
+      # Viewer relation grants read access to the schema
+      viewer:
+        union:
+          child:
+            - this: {}  # Direct assignments
+            - tupleToUserset:  # Role-based permissions propagation
+                tupleset:
+                  object: ""
+                  relation: member
+                computedUserset:
+                  relation: viewer
+            - tupleToUserset:  # Inheritance from parent catalog admins
+                tupleset:
+                  object: ""
+                  relation: parent_catalog
+                computedUserset:
+                  relation: admin
+      # Admin relation grants administrative access to the schema
+      admin:
+        union:
+          child:
+            - this: {}  # Direct assignments
+            - tupleToUserset:  # Role-based permissions propagation
+                tupleset:
+                  object: ""
+                  relation: member
+                computedUserset:
+                  relation: admin
+            - tupleToUserset:  # Inheritance from parent catalog admins
+                tupleset:
+                  object: ""
+                  relation: parent_catalog
+                computedUserset:
+                  relation: admin
+      # Reference to parent catalog for permission inheritance
+      parent_catalog:
+        this: {}
+    metadata:
+      relations:
+        member:
+          directly_related_user_types:
+            - type: user
+            - type: role
+        viewer:
+          directly_related_user_types:
+            - type: user
+            - type: role
+        admin:
+          directly_related_user_types:
+            - type: user
+            - type: role
+        parent_catalog:
+          directly_related_user_types:
+            - type: catalog
+
+  # Table type represents database tables within schemas
+  # Third level in the data hierarchy
+  - type: table
+    relations:
+      # Member relation for role membership associations
+      member:
+        this: {}
+      # Viewer relation grants read access to the table
+      viewer:
+        union:
+          child:
+            - this: {}  # Direct assignments
+            - tupleToUserset:  # Role-based permissions propagation
+                tupleset:
+                  object: ""
+                  relation: member
+                computedUserset:
+                  relation: viewer
+            - tupleToUserset:  # Inheritance from parent schema admins
+                tupleset:
+                  object: ""
+                  relation: parent_schema
+                computedUserset:
+                  relation: admin
+      # Admin relation grants administrative access to the table
+      admin:
+        union:
+          child:
+            - this: {}  # Direct assignments
+            - tupleToUserset:  # Role-based permissions propagation
+                tupleset:
+                  object: ""
+                  relation: member
+                computedUserset:
+                  relation: admin
+            - tupleToUserset:  # Inheritance from parent schema admins
+                tupleset:
+                  object: ""
+                  relation: parent_schema
+                computedUserset:
+                  relation: admin
+      # Reference to parent schema for permission inheritance
+      parent_schema:
+        this: {}
+    metadata:
+      relations:
+        member:
+          directly_related_user_types:
+            - type: user
+            - type: role
+        viewer:
+          directly_related_user_types:
+            - type: user
+            - type: role
+        admin:
+          directly_related_user_types:
+            - type: user
+            - type: role
+        parent_schema:
+          directly_related_user_types:
+            - type: schema
+
+  # Column type represents table columns
+  # Fourth level in the data hierarchy, supports column-level security
+  - type: column
+    relations:
+      # Member relation for role membership associations
+      member:
+        this: {}
+      # Viewer relation grants read access to the column
+      viewer:
+        union:
+          child:
+            - this: {}  # Direct assignments
+            - tupleToUserset:  # Role-based permissions propagation
+                tupleset:
+                  object: ""
+                  relation: member
+                computedUserset:
+                  relation: viewer
+            - tupleToUserset:  # Inheritance from parent table viewers
+                tupleset:
+                  object: ""
+                  relation: parent_table
+                computedUserset:
+                  relation: viewer
+      # Admin relation grants administrative access to the column
+      admin:
+        union:
+          child:
+            - this: {}  # Direct assignments
+            - tupleToUserset:  # Role-based permissions propagation
+                tupleset:
+                  object: ""
+                  relation: member
+                computedUserset:
+                  relation: admin
+            - tupleToUserset:  # Inheritance from parent table admins
+                tupleset:
+                  object: ""
+                  relation: parent_table
+                computedUserset:
+                  relation: admin
+      # Reference to parent table for permission inheritance
+      parent_table:
+        this: {}
+    metadata:
+      relations:
+        member:
+          directly_related_user_types:
+            - type: user
+            - type: role
+        viewer:
+          directly_related_user_types:
+            - type: user
+            - type: role
+        admin:
+          directly_related_user_types:
+            - type: user
+            - type: role
+        parent_table:
+          directly_related_user_types:
+            - type: table
+
+  # Row filter type for implementing row-level security
+  - type: row_filter
+    relations:
+      # Which users/roles this filter applies to
+      applies_to:
+        this: {}
+      # Reference to the table this filter affects
+      target_table:
+        this: {}
+      # Optional: Reference to specific columns this filter uses
+      uses_column:
+        this: {}
+      # The filter expression itself (will use contextual tuples)
+      expression:
+        this: {}
+    metadata:
+      relations:
+        applies_to:
+          directly_related_user_types:
+            - type: user
+            - type: role
+        target_table:
+          directly_related_user_types:
+            - type: table
+        uses_column:
+          directly_related_user_types:
+            - type: column
+        expression:
+          directly_related_user_types:
+            - type: user  # Allowing users to be related to expressions
+
+  # Data masking type for implementing column masking
+  - type: mask_filter
+    relations:
+      # Which users/roles this mask applies to
+      applies_to:
+        this: {}
+      # Reference to the column this mask affects
+      target_column:
+        this: {}
+      # The masking expression itself (will use contextual tuples)
+      expression:
+        this: {}
+    metadata:
+      relations:
+        applies_to:
+          directly_related_user_types:
+            - type: user
+            - type: role
+        target_column:
+          directly_related_user_types:
+            - type: column
+        expression:
+          directly_related_user_types:
+            - type: user  # Allowing users to be related to expressions
