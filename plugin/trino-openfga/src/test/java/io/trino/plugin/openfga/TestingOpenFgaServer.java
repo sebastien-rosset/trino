@@ -13,12 +13,14 @@
  */
 package io.trino.plugin.openfga;
 
+import com.google.common.io.Closer;
 import io.airlift.log.Logger;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 
 import java.io.Closeable;
+import java.io.IOException;
 import java.time.Duration;
 
 /**
@@ -144,13 +146,22 @@ public class TestingOpenFgaServer
     @Override
     public void close()
     {
-        if (dockerContainer != null && dockerContainer.isRunning()) {
+        if (dockerContainer != null) {
             log.info("Stopping OpenFGA container");
-            try {
-                dockerContainer.stop();
+            try (Closer closer = Closer.create()) {
+                // Explicitly stop the container
+                closer.register(() -> {
+                    try {
+                        dockerContainer.stop();
+                        log.info("OpenFGA container stopped successfully");
+                    }
+                    catch (Exception e) {
+                        log.warn("Error stopping OpenFGA container: %s", e.getMessage());
+                    }
+                });
             }
-            catch (Throwable e) {
-                log.warn("Failed to stop OpenFGA container: %s", e.getMessage());
+            catch (IOException e) {
+                log.warn("Exception during container cleanup: %s", e.getMessage());
             }
         }
     }
