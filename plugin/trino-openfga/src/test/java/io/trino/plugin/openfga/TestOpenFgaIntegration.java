@@ -119,9 +119,9 @@ public class TestOpenFgaIntegration
             log.info("TEST SETUP COMPLETE");
         }
         catch (Exception e) {
+            log.error("TEST SETUP FAILED: %s", e.getMessage());
             // If setup fails, make sure we close the OpenFGA server
             closeOpenFgaServer();
-            log.error("TEST SETUP FAILED: %s", e.getMessage());
             if (dockerAvailable) {
                 // Only throw if Docker should be working
                 throw e;
@@ -209,10 +209,32 @@ public class TestOpenFgaIntegration
     }
 
     /**
-     * Integration test for row-level security and column masking.
+     * Sets up a test table with sample employee data.
+     * This is extracted as a separate method to be reused across tests.
+     */
+    private void setupEmployeeTable()
+            throws Exception
+    {
+        queryRunner.execute(adminSession, "CREATE TABLE " + TEST_CATALOG + "." + TEST_SCHEMA + "." + TEST_TABLE + " (" +
+                "id INTEGER, " +
+                "name VARCHAR, " +
+                "department VARCHAR, " +
+                "salary INTEGER, " +
+                "ssn VARCHAR)");
+
+        queryRunner.execute(adminSession, "INSERT INTO " + TEST_CATALOG + "." + TEST_SCHEMA + "." + TEST_TABLE +
+                " VALUES " +
+                "(1, 'Alice', 'HR', 100000, '123-45-6789'), " +
+                "(2, 'Bob', 'Engineering', 120000, '234-56-7890'), " +
+                "(3, 'Carol', 'HR', 90000, '345-67-8901'), " +
+                "(4, 'Dave', 'Finance', 130000, '456-78-9012')");
+    }
+
+    /**
+     * Test for row-level security filtering based on department.
      */
     @Test
-    public void testRowLevelSecurityAndColumnMasking()
+    public void testRowLevelSecurity()
             throws Exception
     {
         // Skip test if Docker isn't available
@@ -225,19 +247,131 @@ public class TestOpenFgaIntegration
         try {
             // Create a test table with sample data
             log.info("Create a test table with sample data");
-            queryRunner.execute(adminSession, "CREATE TABLE " + TEST_CATALOG + "." + TEST_SCHEMA + "." + TEST_TABLE + " (" +
-                    "id INTEGER, " +
-                    "name VARCHAR, " +
-                    "department VARCHAR, " +
-                    "salary INTEGER, " +
-                    "ssn VARCHAR)");
+            setupEmployeeTable();
 
-            queryRunner.execute(adminSession, "INSERT INTO " + TEST_CATALOG + "." + TEST_SCHEMA + "." + TEST_TABLE +
-                    " VALUES " +
-                    "(1, 'Alice', 'HR', 100000, '123-45-6789'), " +
-                    "(2, 'Bob', 'Engineering', 120000, '234-56-7890'), " +
-                    "(3, 'Carol', 'HR', 90000, '345-67-8901'), " +
-                    "(4, 'Dave', 'Finance', 130000, '456-78-9012')");
+            // Set up row-level security filter
+            String filterExprId = "dept_filter_" + UUID.randomUUID().toString().replace("-", "");
+            String rowFilter = "department = 'HR'";
+
+            // Add row filter configuration to OpenFGA
+            log.info("Configure row-level security");
+            configureRowLevelSecurity(filterExprId, TEST_CATALOG + "/" + TEST_SCHEMA + "/" + TEST_TABLE, rowFilter, "test_user");
+
+            // Test row-level security - user should only see HR department rows
+            log.info("Test row-level security");
+            List<Object[]> rows = queryRunner.execute(userSession, "SELECT * FROM " + TEST_CATALOG + "." + TEST_SCHEMA + "." + TEST_TABLE)
+                    .getMaterializedRows().stream()
+                    .map(row -> row.getFields().toArray())
+                    .collect(java.util.stream.Collectors.toList());
+
+            // Verify row count - should only see HR department (2 rows)
+            assertThat(rows).hasSize(2).as("Row-level security should filter to only HR department rows");
+
+            // Verify all returned rows are from HR department
+            for (Object[] row : rows) {
+                assertThat(row[2]).isEqualTo("HR").as("All visible rows should be from HR department");
+            }
+
+            // Verify that we can't see other departments
+            rows = queryRunner.execute(userSession,
+                            "SELECT * FROM " + TEST_CATALOG + "." + TEST_SCHEMA + "." + TEST_TABLE +
+                                    " WHERE department = 'Engineering'")
+                    .getMaterializedRows().stream()
+                    .map(row -> row.getFields().toArray())
+                    .collect(java.util.stream.Collectors.toList());
+
+            assertThat(rows).as("Should not be able to see Engineering department rows").isEmpty();
+        }
+        finally {
+            // Clean up
+            if (queryRunner != null) {
+                queryRunner.execute(adminSession, "DROP TABLE IF EXISTS " + TEST_CATALOG + "." + TEST_SCHEMA + "." + TEST_TABLE);
+            }
+        }
+    }
+
+    /**
+     * Test for column masking of sensitive data (salary and SSN).
+     */
+    @Test
+    public void testColumnMasking()
+            throws Exception
+    {
+        // Skip test if Docker isn't available
+        Assumptions.assumeTrue(dockerAvailable, "Docker is not available for testing");
+
+        // Skip test if we don't have a server to connect to
+        Assumptions.assumeTrue(openFgaApiUrl != null && storeId != null && modelId != null,
+                "OpenFGA server connection not available");
+
+        try {
+            // Create a test table with sample data
+            log.info("Create a test table with sample data");
+            setupEmployeeTable();
+
+            // Set up column masking for salary and SSN columns
+            String salaryMaskId = "salary_mask_" + UUID.randomUUID().toString().replace("-", "");
+            String ssnMaskId = "ssn_mask_" + UUID.randomUUID().toString().replace("-", "");
+
+            String salaryMask = "0"; // Completely mask salary
+            String ssnMask = "regexp_replace(ssn, '(\\d{3})-(\\d{2})-(\\d{4})', 'XXX-XX-$3')"; // Show only last 4 digits
+
+            // Add column mask configurations to OpenFGA
+            log.info("Configure column masking");
+            configureColumnMasking(salaryMaskId,
+                    TEST_CATALOG + "/" + TEST_SCHEMA + "/" + TEST_TABLE + "/salary",
+                    salaryMask,
+                    "test_user");
+
+            configureColumnMasking(ssnMaskId,
+                    TEST_CATALOG + "/" + TEST_SCHEMA + "/" + TEST_TABLE + "/ssn",
+                    ssnMask,
+                    "test_user");
+
+            // Test column masking
+            List<Object[]> maskedRows = queryRunner.execute(userSession,
+                            "SELECT id, name, department, salary, ssn FROM " +
+                                    TEST_CATALOG + "." + TEST_SCHEMA + "." + TEST_TABLE)
+                    .getMaterializedRows().stream()
+                    .map(row -> row.getFields().toArray())
+                    .collect(java.util.stream.Collectors.toList());
+
+            // Check that salary is masked to 0
+            for (Object[] row : maskedRows) {
+                assertThat(row[3]).isEqualTo(0L).as("Salary should be masked to 0");
+
+                // Check that SSN is masked to show only last 4 digits
+                String ssn = (String) row[4];
+                assertThat(ssn).startsWith("XXX-XX-").as("SSN should be masked to show only last 4 digits");
+                assertThat(ssn).matches("XXX-XX-\\d{4}").as("SSN format should be XXX-XX-####");
+            }
+        }
+        finally {
+            // Clean up
+            if (queryRunner != null) {
+                queryRunner.execute(adminSession, "DROP TABLE IF EXISTS " + TEST_CATALOG + "." + TEST_SCHEMA + "." + TEST_TABLE);
+            }
+        }
+    }
+
+    /**
+     * Test for combining row-level security and column masking together.
+     */
+    @Test
+    public void testRowLevelSecurityWithColumnMasking()
+            throws Exception
+    {
+        // Skip test if Docker isn't available
+        Assumptions.assumeTrue(dockerAvailable, "Docker is not available for testing");
+
+        // Skip test if we don't have a server to connect to
+        Assumptions.assumeTrue(openFgaApiUrl != null && storeId != null && modelId != null,
+                "OpenFGA server connection not available");
+
+        try {
+            // Create a test table with sample data
+            log.info("Create a test table with sample data");
+            setupEmployeeTable();
 
             // Set up row-level security filter
             String filterExprId = "dept_filter_" + UUID.randomUUID().toString().replace("-", "");
@@ -266,35 +400,26 @@ public class TestOpenFgaIntegration
                     ssnMask,
                     "test_user");
 
-            // Test row-level security - user should only see HR department rows
-            log.info("Test row-level security");
-            List<Object[]> rows = queryRunner.execute(userSession, "SELECT * FROM " + TEST_CATALOG + "." + TEST_SCHEMA + "." + TEST_TABLE)
+            // Test both row-level security and column masking together
+            List<Object[]> maskedRows = queryRunner.execute(userSession,
+                            "SELECT id, name, department, salary, ssn FROM " +
+                                    TEST_CATALOG + "." + TEST_SCHEMA + "." + TEST_TABLE)
                     .getMaterializedRows().stream()
                     .map(row -> row.getFields().toArray())
                     .collect(java.util.stream.Collectors.toList());
 
             // Verify row count - should only see HR department (2 rows)
-            assertThat(rows).hasSize(2).as("Row-level security should filter to only HR department rows");
+            assertThat(maskedRows).hasSize(2).as("Row-level security should filter to only HR department rows");
 
-            // Verify all returned rows are from HR department
-            for (Object[] row : rows) {
-                assertThat(row[2]).isEqualTo("HR").as("All visible rows should be from HR department");
-            }
-
-            // Test column masking
-            List<Object[]> maskedRows = queryRunner.execute(userSession,
-                            "SELECT id, name, department, salary, ssn FROM " +
-                                    TEST_CATALOG + "." + TEST_SCHEMA + "." + TEST_TABLE +
-                                    " WHERE department = 'HR'")
-                    .getMaterializedRows().stream()
-                    .map(row -> row.getFields().toArray())
-                    .collect(java.util.stream.Collectors.toList());
-
-            // Check that salary is masked to 0
+            // Verify all returned rows are from HR department and have masked columns
             for (Object[] row : maskedRows) {
+                // Check department (row filtering)
+                assertThat(row[2]).isEqualTo("HR").as("All visible rows should be from HR department");
+
+                // Check salary masking
                 assertThat(row[3]).isEqualTo(0L).as("Salary should be masked to 0");
 
-                // Check that SSN is masked to show only last 4 digits
+                // Check SSN masking
                 String ssn = (String) row[4];
                 assertThat(ssn).startsWith("XXX-XX-").as("SSN should be masked to show only last 4 digits");
                 assertThat(ssn).matches("XXX-XX-\\d{4}").as("SSN format should be XXX-XX-####");
@@ -309,120 +434,129 @@ public class TestOpenFgaIntegration
     }
 
     /**
-     * Test to verify minimal authorization model works.
-     * This test uses a minimal model for basic functionality testing.
+     * Test more complex row filter expressions.
      */
     @Test
-    public void testMinimalAuthorizationModel()
+    public void testComplexRowFilters()
             throws Exception
     {
         // Skip test if Docker isn't available
         Assumptions.assumeTrue(dockerAvailable, "Docker is not available for testing");
 
         // Skip test if we don't have a server to connect to
-        Assumptions.assumeTrue(openFgaApiUrl != null && storeId != null,
+        Assumptions.assumeTrue(openFgaApiUrl != null && storeId != null && modelId != null,
                 "OpenFGA server connection not available");
 
-        // Create a test store and model
-        CreateStoreRequest createStoreRequest = new CreateStoreRequest()
-                .name("trino-minimal-model-test-" + UUID.randomUUID());
-
-        var createStoreResponse = sdkClient.createStore(createStoreRequest).get();
-        String testStoreId = createStoreResponse.getId();
-
         try {
-            // Update client configuration with store ID
-            sdkClient.setStoreId(testStoreId);
+            // Create a test table with sample data
+            log.info("Create a test table with sample data");
+            setupEmployeeTable();
 
-            // Create the minimal model
-            String minimalModelJson = """
-                    {
-                      "schema_version": "1.1",
-                      "type_definitions": [
-                        {
-                          "type": "user",
-                          "relations": {
-                            "impersonate": {
-                              "this": {}
-                            }
-                          },
-                          "metadata": {
-                            "relations": {
-                              "impersonate": {
-                                "directly_related_user_types": [
-                                  { "type": "user" }
-                                ]
-                              }
-                            }
-                          }
-                        },
-                        {
-                          "type": "document",
-                          "relations": {
-                            "reader": {
-                              "this": {}
-                            }
-                          },
-                          "metadata": {
-                            "relations": {
-                              "reader": {
-                                "directly_related_user_types": [
-                                  { "type": "user" }
-                                ]
-                              }
-                            }
-                          }
-                        }
-                      ]
-                    }
-                    """;
+            // Set up a more complex row-level security filter with salary threshold
+            String filterExprId = "complex_filter_" + UUID.randomUUID().toString().replace("-", "");
+            String rowFilter = "department = 'HR' OR salary <= 100000";
 
-            // Convert JSON to request using Jackson
-            com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            dev.openfga.sdk.api.model.WriteAuthorizationModelRequest writeRequest =
-                    objectMapper.readValue(minimalModelJson, dev.openfga.sdk.api.model.WriteAuthorizationModelRequest.class);
+            // Add row filter configuration to OpenFGA
+            log.info("Configure complex row-level security");
+            configureRowLevelSecurity(filterExprId, TEST_CATALOG + "/" + TEST_SCHEMA + "/" + TEST_TABLE, rowFilter, "test_user");
 
-            var writeModelResponse = sdkClient.writeAuthorizationModel(writeRequest).get();
-            String testModelId = writeModelResponse.getAuthorizationModelId();
-            log.info("Successfully created minimal test model with ID: %s", testModelId);
+            // Test complex row-level security - should see rows from HR plus any low-salary rows
+            log.info("Test complex row-level security");
+            List<Object[]> rows = queryRunner.execute(userSession, "SELECT * FROM " + TEST_CATALOG + "." + TEST_SCHEMA + "." + TEST_TABLE + " ORDER BY id")
+                    .getMaterializedRows().stream()
+                    .map(row -> row.getFields().toArray())
+                    .collect(java.util.stream.Collectors.toList());
 
-            // Verify the model was created successfully
-            assertThat(testModelId).isNotNull().isNotBlank();
+            // Should see 3 rows: 2 from HR plus one with salary <= 100000
+            assertThat(rows).hasSize(3).as("Complex row filter should return 3 rows");
 
-            // Add a test relationship
-            ClientTupleKey tupleKey = new ClientTupleKey()
-                    ._object("document:test")
-                    .relation("reader")
-                    .user("user:test");
+            // Verify the rows match our filter expression
+            for (Object[] row : rows) {
+                String department = (String) row[2];
+                long salary = (Long) row[3];
 
-            ClientWriteRequest request = new ClientWriteRequest()
-                    .writes(List.of(tupleKey));
-
-            sdkClient.write(request);
-
-            // Check the relationship was created correctly
-            var checkRequest = new dev.openfga.sdk.api.client.model.ClientCheckRequest()
-                    ._object("document:test")
-                    .relation("reader")
-                    .user("user:test");
-
-            var checkResponse = sdkClient.check(checkRequest).get();
-            assertThat(checkResponse.getAllowed()).isTrue();
+                // Each row should satisfy our filter condition
+                assertThat(department.equals("HR") || salary <= 100000)
+                        .as("Row should match filter expression: department='HR' OR salary <= 100000")
+                        .isTrue();
+            }
         }
         finally {
-            // Clean up the test store
-            if (sdkClient != null) {
-                try {
-                    sdkClient.setStoreId(testStoreId);
-                    sdkClient.deleteStore().get();
-                    log.info("Deleted test store for minimal model test");
-                }
-                catch (Exception e) {
-                    log.warn("Failed to delete test store: %s", e.getMessage());
-                }
+            // Clean up
+            if (queryRunner != null) {
+                queryRunner.execute(adminSession, "DROP TABLE IF EXISTS " + TEST_CATALOG + "." + TEST_SCHEMA + "." + TEST_TABLE);
+            }
+        }
+    }
 
-                // Reset to the original store
-                sdkClient.setStoreId(storeId);
+    /**
+     * Test for different column mask types.
+     */
+    @Test
+    public void testDifferentColumnMaskTypes()
+            throws Exception
+    {
+        // Skip test if Docker isn't available
+        Assumptions.assumeTrue(dockerAvailable, "Docker is not available for testing");
+
+        // Skip test if we don't have a server to connect to
+        Assumptions.assumeTrue(openFgaApiUrl != null && storeId != null && modelId != null,
+                "OpenFGA server connection not available");
+
+        try {
+            // Create a test table with sample data
+            log.info("Create a test table with sample data");
+            setupEmployeeTable();
+
+            // Set up different types of column masks
+            String salaryMaskId = "partial_salary_mask_" + UUID.randomUUID().toString().replace("-", "");
+            String nameMaskId = "name_mask_" + UUID.randomUUID().toString().replace("-", "");
+
+            // Partial data masking for salary (show range instead of exact value)
+            String salaryMask = "CASE WHEN salary < 100000 THEN 'Under 100K' " +
+                    "WHEN salary >= 100000 AND salary < 120000 THEN '100K-120K' " +
+                    "ELSE 'Over 120K' END";
+
+            // Name masking - show only first letter
+            String nameMask = "CONCAT(SUBSTRING(name, 1, 1), '****')";
+
+            // Add column mask configurations to OpenFGA
+            log.info("Configure different column mask types");
+            configureColumnMasking(salaryMaskId,
+                    TEST_CATALOG + "/" + TEST_SCHEMA + "/" + TEST_TABLE + "/salary",
+                    salaryMask,
+                    "test_user");
+
+            configureColumnMasking(nameMaskId,
+                    TEST_CATALOG + "/" + TEST_SCHEMA + "/" + TEST_TABLE + "/name",
+                    nameMask,
+                    "test_user");
+
+            // Test column masking
+            List<Object[]> maskedRows = queryRunner.execute(userSession,
+                            "SELECT id, name, department, salary FROM " +
+                                    TEST_CATALOG + "." + TEST_SCHEMA + "." + TEST_TABLE +
+                                    " ORDER BY id")
+                    .getMaterializedRows().stream()
+                    .map(row -> row.getFields().toArray())
+                    .collect(java.util.stream.Collectors.toList());
+
+            // Verify masked names follow our pattern
+            for (Object[] row : maskedRows) {
+                String maskedName = (String) row[1];
+                assertThat(maskedName).matches("[A-Z]\\*\\*\\*\\*").as("Name should be masked with first letter only");
+            }
+
+            // Verify salary ranges are applied correctly
+            assertThat(maskedRows.get(0)[3]).isEqualTo("100K-120K"); // Alice: 100000
+            assertThat(maskedRows.get(1)[3]).isEqualTo("Over 120K"); // Bob: 120000
+            assertThat(maskedRows.get(2)[3]).isEqualTo("Under 100K"); // Carol: 90000
+            assertThat(maskedRows.get(3)[3]).isEqualTo("Over 120K"); // Dave: 130000
+        }
+        finally {
+            // Clean up
+            if (queryRunner != null) {
+                queryRunner.execute(adminSession, "DROP TABLE IF EXISTS " + TEST_CATALOG + "." + TEST_SCHEMA + "." + TEST_TABLE);
             }
         }
     }
@@ -447,7 +581,7 @@ public class TestOpenFgaIntegration
         // Set up authorization for test users in the test OpenFGA client
         // First check if we need to create a TestingOpenFgaClient
         if (!(openFgaClient instanceof TestingOpenFgaClient)) {
-            log.info("Creating a TestingOpenFgaClient for better test control");
+            log.info("Creating a TestingOpenFgaClient");
 
             // Create a TestingOpenFgaClient with the same configuration
             OpenFgaConfig testConfig = new OpenFgaConfig()
@@ -476,42 +610,42 @@ public class TestOpenFgaIntegration
                 .put("openfga.model.id", modelId)
                 .buildOrThrow();
 
-        // Create QueryRunner
+        // Create two different sessions for testing different permission levels:
+
+        // 1. Admin session - used for setup, teardown, and administrative operations
+        // This session has full permissions to create schemas, tables, and data
+        log.info("Create admin session");
         adminSession = testSessionBuilder()
                 .setCatalog(TEST_CATALOG)
                 .setSchema(TEST_SCHEMA)
-                .setSystemProperty("user", "admin")
+                .setSystemProperty("user", "admin")  // Uses admin user identity
                 .build();
 
+        // 2. User session - used to test security restrictions
+        // This session represents a regular user with limited permissions
+        // and will be subject to row-level security and column masking rules
+        log.info("Create 'test_user' session");
         userSession = testSessionBuilder()
                 .setCatalog(TEST_CATALOG)
                 .setSchema(TEST_SCHEMA)
-                .setSystemProperty("user", "test_user")
+                .setSystemProperty("user", "test_user")  // Uses standard user identity
                 .build();
 
-        // Set up distributed query runner with memory connector
-        queryRunner = DistributedQueryRunner.builder(adminSession).build();
-        queryRunner.installPlugin(new MemoryPlugin());
-        queryRunner.createCatalog(TEST_CATALOG, "memory");
-
-        // Configure OpenFGA access control
-        // Create the access control instance
+        // Configure OpenFGA access control - create the access control instance first
+        log.info("Creating OpenFGA access control");
         OpenFgaAccessControlFactory factory = new OpenFgaAccessControlFactory();
-        SystemAccessControl accessControl = factory.create(properties, new SimpleSystemAccessControlContext("test-version"));
+        SystemAccessControl accessControl = factory.create(properties,
+                new SimpleSystemAccessControlContext("test-version"));
 
-        // Since we don't have direct access to add system access controls in the test environment,
-        // we'll rebuild the query runner with the access control built-in
-
-        // We need to close the existing query runner first
-        queryRunner.close();
-
-        // Create a new query runner with our access control
+        // Set up distributed query runner with memory connector and the access control built in
+        log.info("Setting up distributed query runner with access control");
         queryRunner = DistributedQueryRunner.builder(adminSession)
                 .setSystemAccessControl(accessControl)
                 .build();
 
-        // Re-install memory plugin and catalog
+        log.info("Installing memory plugin");
         queryRunner.installPlugin(new MemoryPlugin());
+        log.info("Creating memory catalog");
         queryRunner.createCatalog(TEST_CATALOG, "memory");
     }
 

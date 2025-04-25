@@ -51,17 +51,17 @@ type_definitions:
             - type: user
 
   # System type controls global Trino system permissions
-  # Examples: ability to execute queries, impersonate users
+  # Examples: ability to execute queries
   - type: system
     relations:
       # Permission to execute queries in the system
       execute_query:
         this: {}
-      # Permission to impersonate other users
-      impersonate:
-        this: {}
       # Permission to read system information
       read:
+        this: {}
+      # Permission to write system information
+      write:
         this: {}
     metadata:
       relations:
@@ -69,11 +69,11 @@ type_definitions:
           directly_related_user_types:
             - type: user
             - type: role
-        impersonate:
+        read:
           directly_related_user_types:
             - type: user
             - type: role
-        read:
+        write:
           directly_related_user_types:
             - type: user
             - type: role
