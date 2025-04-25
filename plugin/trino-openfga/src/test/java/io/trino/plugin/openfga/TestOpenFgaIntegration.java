@@ -248,6 +248,7 @@ public class TestOpenFgaIntegration
             // Create a test table with sample data
             log.info("Create a test table with sample data");
             setupEmployeeTable();
+            log.info("Test table created");
 
             // Set up row-level security filter
             String filterExprId = "dept_filter_" + UUID.randomUUID().toString().replace("-", "");
@@ -281,6 +282,10 @@ public class TestOpenFgaIntegration
                     .collect(java.util.stream.Collectors.toList());
 
             assertThat(rows).as("Should not be able to see Engineering department rows").isEmpty();
+        }
+        catch (Exception e) {
+            log.error(e, "Failed to test row-level security");
+            throw e;
         }
         finally {
             // Clean up
@@ -345,6 +350,10 @@ public class TestOpenFgaIntegration
                 assertThat(ssn).startsWith("XXX-XX-").as("SSN should be masked to show only last 4 digits");
                 assertThat(ssn).matches("XXX-XX-\\d{4}").as("SSN format should be XXX-XX-####");
             }
+        }
+        catch (Exception e) {
+            log.error(e, "Failed to test column masking");
+            throw e;
         }
         finally {
             // Clean up
@@ -425,6 +434,10 @@ public class TestOpenFgaIntegration
                 assertThat(ssn).matches("XXX-XX-\\d{4}").as("SSN format should be XXX-XX-####");
             }
         }
+        catch (Exception e) {
+            log.error(e, "Failed to test row-level security with column masking");
+            throw e;
+        }
         finally {
             // Clean up
             if (queryRunner != null) {
@@ -480,6 +493,10 @@ public class TestOpenFgaIntegration
                         .as("Row should match filter expression: department='HR' OR salary <= 100000")
                         .isTrue();
             }
+        }
+        catch (Exception e) {
+            log.error(e, "Failed to test complex row filters");
+            throw e;
         }
         finally {
             // Clean up
@@ -552,6 +569,10 @@ public class TestOpenFgaIntegration
             assertThat(maskedRows.get(1)[3]).isEqualTo("Over 120K"); // Bob: 120000
             assertThat(maskedRows.get(2)[3]).isEqualTo("Under 100K"); // Carol: 90000
             assertThat(maskedRows.get(3)[3]).isEqualTo("Over 120K"); // Dave: 130000
+        }
+        catch (Exception e) {
+            log.error(e, "Failed to test different column mask types");
+            throw e;
         }
         finally {
             // Clean up
