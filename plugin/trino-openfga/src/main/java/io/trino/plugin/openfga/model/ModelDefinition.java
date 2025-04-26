@@ -282,14 +282,14 @@ public final class ModelDefinition
     {
         log.debug("Converting AuthorizationModel to DSL format");
         StringBuilder dsl = new StringBuilder();
-
+        dsl.append("model\n");
         // Add model header with schema version if present
         if (model.getSchemaVersion() != null && !model.getSchemaVersion().isEmpty()) {
-            dsl.append("model schema ").append(model.getSchemaVersion()).append("\n");
+            dsl.append("  schema ").append(model.getSchemaVersion()).append("\n");
         }
         else {
             // Default to schema 1.2 if not specified
-            dsl.append("model schema 1.2\n");
+            dsl.append("  schema 1.2\n");
         }
 
         // Process type definitions
