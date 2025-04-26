@@ -302,12 +302,15 @@ public final class ModelDefinition
 
                 // Process relations
                 if (typeDef.getRelations() != null && !typeDef.getRelations().isEmpty()) {
+                    // Add relations header once for each type
+                    dsl.append("  relations\n");
+
                     for (Map.Entry<String, dev.openfga.sdk.api.model.Userset> relation : typeDef.getRelations().entrySet()) {
                         String relationName = relation.getKey();
                         dev.openfga.sdk.api.model.Userset userset = relation.getValue();
 
-                        dsl.append("  relations\n");
-                        dsl.append("    ").append(relationName).append(": ");
+                        // Use the 'define' keyword as specified in the OpenFGA configuration language
+                        dsl.append("    define ").append(relationName).append(": ");
 
                         // Convert the userset to DSL syntax
                         dsl.append(usersetToDSL(userset));
