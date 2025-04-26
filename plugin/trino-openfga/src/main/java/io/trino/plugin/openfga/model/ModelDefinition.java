@@ -16,12 +16,10 @@ package io.trino.plugin.openfga.model;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.module.SimpleModule;
+import dev.openfga.language.JsonToDslTransformer;
 import dev.openfga.sdk.api.model.AuthorizationModel;
 import dev.openfga.sdk.api.model.Condition;
-import dev.openfga.sdk.api.model.ObjectRelation;
-import dev.openfga.sdk.api.model.TupleToUserset;
 import dev.openfga.sdk.api.model.TypeDefinition;
-import dev.openfga.sdk.api.model.TypeName;
 import dev.openfga.sdk.api.model.WriteAuthorizationModelRequest;
 import io.airlift.log.Logger;
 import org.yaml.snakeyaml.Yaml;
@@ -268,7 +266,7 @@ public final class ModelDefinition
     }
 
     /**
-     * Convert an AuthorizationModel to an OpenFGA DSL string representation.
+     * Convert an AuthorizationModel to an OpenFGA DSL string representation using the official OpenFGA language library.
      * <p>
      * The DSL format is a human-readable text format for defining OpenFGA authorization models.
      * This is the format used in the OpenFGA documentation and modeling tools.
@@ -280,124 +278,23 @@ public final class ModelDefinition
     public static String toDSL(AuthorizationModel model)
             throws IOException
     {
-        log.debug("Converting AuthorizationModel to DSL format");
-        StringBuilder dsl = new StringBuilder();
-        dsl.append("model\n");
-        // Add model header with schema version if present
-        if (model.getSchemaVersion() != null && !model.getSchemaVersion().isEmpty()) {
-            dsl.append("  schema ").append(model.getSchemaVersion()).append("\n");
+        log.debug("Converting AuthorizationModel to DSL format using OpenFGA language library");
+
+        // Convert model to JSON string
+        String jsonString = toJson(model);
+
+        // Use the OpenFGA language library to convert JSON to DSL
+        try {
+            // Create a new instance of JsonToDslTransformer and call the transform method
+            JsonToDslTransformer transformer = new JsonToDslTransformer();
+            String dsl = transformer.transform(jsonString);
+            log.debug("Successfully generated DSL representation of the authorization model");
+            return dsl;
         }
-        else {
-            // Default to schema 1.2 if not specified
-            dsl.append("  schema 1.2\n");
+        catch (Exception e) {
+            log.error(e, "Failed to convert model to DSL: %s", e.getMessage());
+            throw new IOException("Failed to convert model to DSL using OpenFGA language library", e);
         }
-
-        // Process type definitions
-        if (model.getTypeDefinitions() != null && !model.getTypeDefinitions().isEmpty()) {
-            log.debug("Processing %d type definitions for DSL output", model.getTypeDefinitions().size());
-
-            for (TypeDefinition typeDef : model.getTypeDefinitions()) {
-                dsl.append("\n");
-                dsl.append("type ").append(typeDef.getType());
-
-                // Get module and source info from metadata for schema 1.2+
-                if (typeDef.getMetadata() != null) {
-                    String module = typeDef.getMetadata().getModule();
-                    dev.openfga.sdk.api.model.SourceInfo sourceInfo = typeDef.getMetadata().getSourceInfo();
-
-                    // Add module and source info comment if available (for schema 1.2)
-                    if (module != null || sourceInfo != null) {
-                        dsl.append(" ## ");
-                        if (module != null) {
-                            dsl.append("module = ").append(module);
-                        }
-
-                        if (sourceInfo != null && sourceInfo.getFile() != null) {
-                            if (module != null) {
-                                dsl.append("; ");
-                            }
-                            dsl.append("filename = ").append(sourceInfo.getFile());
-                        }
-                    }
-                }
-
-                dsl.append("\n");
-
-                // Process relations
-                if (typeDef.getRelations() != null && !typeDef.getRelations().isEmpty()) {
-                    // Add relations header once for each type
-                    dsl.append("  relations\n");
-
-                    for (Map.Entry<String, dev.openfga.sdk.api.model.Userset> relation : typeDef.getRelations().entrySet()) {
-                        String relationName = relation.getKey();
-                        dev.openfga.sdk.api.model.Userset userset = relation.getValue();
-
-                        // Use the 'define' keyword as specified in the OpenFGA configuration language
-                        dsl.append("    define ").append(relationName).append(": ");
-
-                        // Add the directly_related_user_types notation if available
-                        if (typeDef.getMetadata() != null &&
-                                typeDef.getMetadata().getRelations() != null &&
-                                typeDef.getMetadata().getRelations().containsKey(relationName) &&
-                                typeDef.getMetadata().getRelations().get(relationName).getDirectlyRelatedUserTypes() != null &&
-                                !typeDef.getMetadata().getRelations().get(relationName).getDirectlyRelatedUserTypes().isEmpty()) {
-                            // Convert the directly_related_user_types to DSL bracket notation
-                            dsl.append("[");
-                            dsl.append(relationReferenceListToBracketNotation(
-                                    typeDef.getMetadata().getRelations().get(relationName).getDirectlyRelatedUserTypes()));
-                            dsl.append("]");
-
-                            // If we have both directly related user types and a computed relationship, add 'or'
-                            if (userset.getThis() == null && userset.getUnion() == null &&
-                                    (userset.getComputedUserset() != null ||
-                                            userset.getTupleToUserset() != null ||
-                                            userset.getIntersection() != null ||
-                                            userset.getDifference() != null)) {
-                                dsl.append(" or ");
-                            }
-                        }
-
-                        // Convert the userset to DSL syntax if it's not a simple "this" (which is already represented by square brackets)
-                        if (userset.getThis() == null ||
-                                (typeDef.getMetadata() == null ||
-                                        typeDef.getMetadata().getRelations() == null ||
-                                        !typeDef.getMetadata().getRelations().containsKey(relationName) ||
-                                        typeDef.getMetadata().getRelations().get(relationName).getDirectlyRelatedUserTypes() == null ||
-                                        typeDef.getMetadata().getRelations().get(relationName).getDirectlyRelatedUserTypes().isEmpty())) {
-                            dsl.append(usersetToDSL(userset));
-                        }
-
-                        dsl.append("\n");
-                    }
-                }
-            }
-        }
-
-        // Process conditions if present
-        if (model.getConditions() != null && !model.getConditions().isEmpty()) {
-            dsl.append("\n");
-            dsl.append("conditions\n");
-
-            for (Map.Entry<String, Condition> entry : model.getConditions().entrySet()) {
-                String conditionName = entry.getKey();
-                Condition condition = entry.getValue();
-
-                dsl.append("  ").append(conditionName).append(" ");
-                dsl.append("[").append(conditionParamsToString(condition)).append("] ");
-
-                if (condition.getExpression() != null) {
-                    String expression = condition.getExpression();
-                    // Escape any quotes in the expression
-                    expression = expression.replace("\"", "\\\"");
-                    dsl.append("\"").append(expression).append("\"");
-                }
-
-                dsl.append("\n");
-            }
-        }
-
-        log.debug("Successfully generated DSL representation of the authorization model");
-        return dsl.toString();
     }
 
     /**
@@ -419,192 +316,6 @@ public final class ModelDefinition
 
         // Use the AuthorizationModel version of toDSL
         return toDSL(model);
-    }
-
-    /**
-     * Convert a Userset to its DSL string representation
-     */
-    private static String usersetToDSL(dev.openfga.sdk.api.model.Userset userset)
-    {
-        if (userset == null) {
-            return "nil";
-        }
-
-        // Handle direct (this) references
-        if (userset.getThis() != null) {
-            return "self";
-        }
-
-        // Handle computed usersets
-        if (userset.getComputedUserset() != null) {
-            ObjectRelation computed = userset.getComputedUserset();
-            return computed.getObject() + "#" + computed.getRelation();
-        }
-
-        // Handle tuple to userset
-        if (userset.getTupleToUserset() != null) {
-            TupleToUserset tupleToUserset = userset.getTupleToUserset();
-
-            // In the SDK model, TupleToUserset has tupleset and computedUserset fields
-            ObjectRelation tupleset = tupleToUserset.getTupleset();
-            ObjectRelation computedUserset = tupleToUserset.getComputedUserset();
-
-            if (tupleset != null && computedUserset != null) {
-                // The DSL format for this is "relation from object#relation"
-                return tupleset.getRelation() + " from " + computedUserset.getObject() + "#" + computedUserset.getRelation();
-            }
-        }
-
-        // Handle union
-        if (userset.getUnion() != null && userset.getUnion().getChild() != null) {
-            List<dev.openfga.sdk.api.model.Userset> children = userset.getUnion().getChild();
-            return children.stream()
-                    .map(ModelDefinition::usersetToDSL)
-                    .collect(java.util.stream.Collectors.joining(" or "));
-        }
-
-        // Handle intersection
-        if (userset.getIntersection() != null && userset.getIntersection().getChild() != null) {
-            List<dev.openfga.sdk.api.model.Userset> children = userset.getIntersection().getChild();
-            return children.stream()
-                    .map(ModelDefinition::usersetToDSL)
-                    .collect(java.util.stream.Collectors.joining(" and "));
-        }
-
-        // Handle difference
-        if (userset.getDifference() != null) {
-            dev.openfga.sdk.api.model.Difference difference = userset.getDifference();
-            return usersetToDSL(difference.getBase()) + " but not " + usersetToDSL(difference.getSubtract());
-        }
-
-        return "";
-    }
-
-    /**
-     * Convert a list of RelationReference objects to DSL bracket notation
-     * For example: [user, group#member]
-     */
-    private static String relationReferenceListToBracketNotation(List<dev.openfga.sdk.api.model.RelationReference> types)
-    {
-        if (types == null || types.isEmpty()) {
-            return "";
-        }
-
-        return types.stream()
-                .map(ref -> {
-                    StringBuilder sb = new StringBuilder();
-
-                    if (ref.getType() != null) {
-                        sb.append(ref.getType());
-
-                        // Handle wildcard
-                        if (ref.getWildcard() != null) {
-                            sb.append(":*");
-                        }
-                        // Handle relation
-                        else if (ref.getRelation() != null) {
-                            sb.append("#").append(ref.getRelation());
-                        }
-                    }
-
-                    return sb.toString();
-                })
-                .collect(java.util.stream.Collectors.joining(", "));
-    }
-
-    /**
-     * Convert directly related user types to DSL format (verbose JSON-like format)
-     *
-     * @deprecated Use relationReferenceListToBracketNotation instead for DSL output
-     */
-    @Deprecated
-    private static String directlyRelatedUserTypesToDSL(List<dev.openfga.sdk.api.model.RelationReference> types)
-    {
-        if (types == null || types.isEmpty()) {
-            return "[]";
-        }
-
-        return types.stream()
-                .map(ref -> {
-                    StringBuilder sb = new StringBuilder();
-
-                    // Handle type
-                    if (ref.getType() != null) {
-                        sb.append("{type: \"").append(ref.getType()).append("\"");
-
-                        // Handle relation if present
-                        if (ref.getRelation() != null) {
-                            sb.append(", relation: \"").append(ref.getRelation()).append("\"");
-                        }
-                        // Handle wildcard if present
-                        else if (ref.getWildcard() != null) {
-                            sb.append(", wildcard: {}");
-                        }
-
-                        sb.append("}");
-                    }
-
-                    return sb.toString();
-                })
-                .collect(java.util.stream.Collectors.joining(", "));
-    }
-
-    /**
-     * Convert condition parameters to string representation
-     */
-    private static String conditionParamsToString(Condition condition)
-    {
-        if (condition.getParameters() == null || condition.getParameters().isEmpty()) {
-            return "";
-        }
-
-        return condition.getParameters().entrySet().stream()
-                .map(entry -> entry.getKey() + ": " + paramTypeRefToString(entry.getValue()))
-                .collect(java.util.stream.Collectors.joining(", "));
-    }
-
-    /**
-     * Convert a condition parameter type reference to string
-     */
-    private static String paramTypeRefToString(dev.openfga.sdk.api.model.ConditionParamTypeRef typeRef)
-    {
-        if (typeRef == null) {
-            return "string"; // Default to string for null
-        }
-
-        // The SDK uses getTypeName() which returns a TypeName enum
-        TypeName typeName = typeRef.getTypeName();
-        if (typeName != null) {
-            String typeNameStr = typeName.toString();
-
-            switch (typeNameStr) {
-                case "BOOLEAN":
-                    return "bool";
-                case "STRING":
-                    return "string";
-                case "INT":
-                    return "int";
-                case "DOUBLE":
-                case "FLOAT":
-                    return "float";
-                case "ARRAY":
-                    if (typeRef.getGenericTypes() != null && !typeRef.getGenericTypes().isEmpty()) {
-                        return paramTypeRefToString(typeRef.getGenericTypes().get(0)) + "[]";
-                    }
-                    return "string[]"; // Default array type if generic type isn't specified
-                case "MAP":
-                    // For map types, we need the key and value types
-                    if (typeRef.getGenericTypes() != null && typeRef.getGenericTypes().size() >= 2) {
-                        String keyType = paramTypeRefToString(typeRef.getGenericTypes().get(0));
-                        String valueType = paramTypeRefToString(typeRef.getGenericTypes().get(1));
-                        return "map[" + keyType + "]" + valueType;
-                    }
-                    return "map[string]string"; // Default map type if generic types aren't specified
-            }
-        }
-
-        // Default to string if we don't recognize the type
-        return "string";
     }
 
     static {
