@@ -68,44 +68,8 @@ public final class ModelDefinition
 
         log.debug("Parsed YAML to map with keys: %s", modelMap.keySet());
 
-        // Handle specific fields that need special treatment
-        if (modelMap.containsKey("type_definitions")) {
-            Object typeDefsObject = modelMap.get("type_definitions");
-            if (typeDefsObject instanceof List<?> typeDefinitions) {
-                log.debug("Found %d type definitions in YAML", typeDefinitions.size());
-
-                // Log information about each type definition
-                for (Object typeDef : typeDefinitions) {
-                    if (typeDef instanceof Map<?, ?> typeDefMap) {
-                        // Use ? wildcard for Map keys and values since we don't know the exact types
-                        Object typeValue = typeDefMap.get("type");
-                        String type = (typeValue != null) ? typeValue.toString() : "unknown";
-
-                        // Log which types have relations and metadata
-                        boolean hasRelations = typeDefMap.containsKey("relations");
-                        boolean hasMetadata = typeDefMap.containsKey("metadata");
-
-                        log.debug("Type '%s': hasRelations=%s, hasMetadata=%s",
-                                type, hasRelations, hasMetadata);
-
-                        // Check if metadata contains relations section
-                        if (hasMetadata) {
-                            Object metadataObj = typeDefMap.get("metadata");
-                            if (metadataObj instanceof Map<?, ?> metadata) {
-                                boolean hasRelationsMetadata = metadata.containsKey("relations");
-                                log.debug("  Type '%s' metadata: hasRelationsMetadata=%s",
-                                        type, hasRelationsMetadata);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         // Then convert Map to JSON string
         String jsonString = JSON_MAPPER.writeValueAsString(modelMap);
-
-        log.debug("Converted Map to JSON: %s", jsonString.substring(0, Math.min(200, jsonString.length())) + "...");
 
         try {
             // First parse JSON string to WriteAuthorizationModelRequest to validate structure
@@ -114,21 +78,6 @@ public final class ModelDefinition
             // Validate the request has required fields
             if (request.getTypeDefinitions() == null || request.getTypeDefinitions().isEmpty()) {
                 log.warn("Authorization model has no type definitions after parsing");
-            }
-            else {
-                log.debug("Successfully parsed authorization model with %d type definitions",
-                        request.getTypeDefinitions().size());
-
-                // Log the first few type definitions to ensure they're properly structured
-                int count = 0;
-                for (TypeDefinition typeDef : request.getTypeDefinitions()) {
-                    if (count < 3) {  // Limit to first 3 for brevity
-                        log.debug("TypeDef[%d]: type=%s, relations=%d",
-                                count, typeDef.getType(),
-                                typeDef.getRelations() != null ? typeDef.getRelations().size() : 0);
-                        count++;
-                    }
-                }
             }
 
             // Convert to AuthorizationModel
