@@ -14,6 +14,8 @@
 package io.trino.plugin.openfga.model;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.openfga.sdk.api.model.AuthorizationModel;
+import dev.openfga.sdk.api.model.WriteAuthorizationModelRequest;
 import io.trino.plugin.openfga.OpenFgaConfig;
 import io.trino.plugin.openfga.model.OpenFgaModelManager.ModelValidationResult;
 import org.junit.jupiter.api.Test;
@@ -43,10 +45,12 @@ public class TestOpenFgaModelManager
         // Initialize will load the default model if no model ID is configured
         modelManager.initializeModel();
 
-        // Export the model as YAML and convert it to a ModelDefinition
+        // Export the model as YAML and parse it
         String modelYaml = modelManager.exportModel(Optional.empty());
-        dev.openfga.sdk.api.model.WriteAuthorizationModelRequest writeRequest =
-                ModelDefinition.fromYaml(modelYaml);
+        AuthorizationModel model = ModelDefinition.fromYaml(modelYaml);
+
+        // Convert to WriteAuthorizationModelRequest for verification
+        WriteAuthorizationModelRequest writeRequest = ModelDefinition.toWriteRequest(model);
 
         // Verify that model definition was loaded successfully
         assertThat(writeRequest).isNotNull();

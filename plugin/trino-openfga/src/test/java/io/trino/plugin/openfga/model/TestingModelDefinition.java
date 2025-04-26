@@ -15,6 +15,7 @@ package io.trino.plugin.openfga.model;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import dev.openfga.sdk.api.model.AuthorizationModel;
 import io.airlift.log.Logger;
 import io.trino.plugin.openfga.OpenFgaConfig;
 import io.trino.plugin.openfga.model.OpenFgaModelManager.ModelValidationResult;
@@ -72,8 +73,7 @@ public class TestingModelDefinition
             String defaultModelJson = getDefaultModelJson();
 
             // Parse and validate it without making API calls
-            dev.openfga.sdk.api.model.WriteAuthorizationModelRequest writeRequest =
-                    ModelDefinition.fromJson(defaultModelJson);
+            AuthorizationModel model = ModelDefinition.fromJson(defaultModelJson);
 
             // If we reach here, the model is valid
             return defaultModelJson;

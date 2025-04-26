@@ -255,8 +255,10 @@ public class TestingOpenFgaModelManager
     private AuthorizationModel createMockModelFromJson(String json)
             throws IOException
     {
-        WriteAuthorizationModelRequest request = ModelDefinition.fromJson(json);
-        return createMockModelFromRequest(request, currentModelId);
+        AuthorizationModel model = ModelDefinition.fromJson(json);
+        // Override the ID with our current test ID
+        model.setId(currentModelId);
+        return model;
     }
 
     /**
@@ -283,8 +285,15 @@ public class TestingOpenFgaModelManager
         modelValidationResults.put("*", new OpenFgaModelManager.ModelValidationResult(false, Optional.of(errorMessage)));
     }
 
+    /**
+     * Verify that a model file is valid without creating it.
+     * This can be used to validate a custom model file before attempting to apply it.
+     *
+     * @param modelPath Path to the model file
+     * @return A validation result object containing success status and any error messages
+     */
     @Override
-    public OpenFgaModelManager.ModelValidationResult verifyModelFile(String modelPath)
+    public ModelValidationResult verifyModelFile(String modelPath)
     {
         // If we have a predefined result for modelPath, return it
         if (modelValidationResults.containsKey(modelPath)) {
@@ -297,7 +306,29 @@ public class TestingOpenFgaModelManager
         }
 
         // Otherwise use the parent implementation which will use our mock client
-        return super.verifyModelFile(modelPath);
+        try {
+            AuthorizationModel model = ModelDefinition.fromYaml(loadResourceContent(modelPath));
+            WriteAuthorizationModelRequest request = ModelDefinition.toWriteRequest(model);
+            return verifyModel(ModelDefinition.toYaml(request));
+        }
+        catch (IOException e) {
+            log.debug("Failed to load model from path %s: %s", modelPath, e.getMessage());
+            return new ModelValidationResult(false, Optional.of("Failed to load model file: " + e.getMessage()));
+        }
+    }
+
+    /**
+     * Helper method to load resource content as a string
+     */
+    private String loadResourceContent(String resourcePath)
+            throws IOException
+    {
+        try (java.io.InputStream inputStream = getClass().getClassLoader().getResourceAsStream(resourcePath)) {
+            if (inputStream == null) {
+                throw new IOException("Resource not found: " + resourcePath);
+            }
+            return new String(inputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
     }
 
     /**

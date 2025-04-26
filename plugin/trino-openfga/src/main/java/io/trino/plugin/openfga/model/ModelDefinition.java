@@ -51,13 +51,13 @@ public final class ModelDefinition
     }
 
     /**
-     * Create a WriteAuthorizationModelRequest from a YAML string.
+     * Create an AuthorizationModel from a YAML string.
      *
      * @param yamlString The YAML string to parse
-     * @return The parsed WriteAuthorizationModelRequest
+     * @return The parsed AuthorizationModel
      * @throws IOException if parsing fails
      */
-    public static WriteAuthorizationModelRequest fromYaml(String yamlString)
+    public static AuthorizationModel fromYaml(String yamlString)
             throws IOException
     {
         // First convert YAML to a Map with proper type handling
@@ -108,7 +108,7 @@ public final class ModelDefinition
         log.debug("Converted Map to JSON: %s", jsonString.substring(0, Math.min(200, jsonString.length())) + "...");
 
         try {
-            // Parse JSON string to WriteAuthorizationModelRequest
+            // First parse JSON string to WriteAuthorizationModelRequest to validate structure
             WriteAuthorizationModelRequest request = JSON_MAPPER.readValue(jsonString, WriteAuthorizationModelRequest.class);
 
             // Validate the request has required fields
@@ -131,25 +131,40 @@ public final class ModelDefinition
                 }
             }
 
-            return request;
+            // Convert to AuthorizationModel
+            AuthorizationModel model = new AuthorizationModel();
+            model.setSchemaVersion(request.getSchemaVersion());
+            model.setTypeDefinitions(request.getTypeDefinitions());
+            model.setConditions(request.getConditions());
+
+            return model;
         }
         catch (Exception e) {
-            log.error(e, "Failed to parse JSON to WriteAuthorizationModelRequest");
+            log.error(e, "Failed to parse JSON to AuthorizationModel");
             throw e;
         }
     }
 
     /**
-     * Create a WriteAuthorizationModelRequest from a JSON string.
+     * Create an AuthorizationModel from a JSON string.
      *
      * @param jsonString The JSON string to parse
-     * @return The parsed WriteAuthorizationModelRequest
+     * @return The parsed AuthorizationModel
      * @throws IOException if parsing fails
      */
-    public static WriteAuthorizationModelRequest fromJson(String jsonString)
+    public static AuthorizationModel fromJson(String jsonString)
             throws IOException
     {
-        return fromJson(jsonString, WriteAuthorizationModelRequest.class);
+        // First parse to validate structure
+        WriteAuthorizationModelRequest request = JSON_MAPPER.readValue(jsonString, WriteAuthorizationModelRequest.class);
+
+        // Convert to AuthorizationModel
+        AuthorizationModel model = new AuthorizationModel();
+        model.setSchemaVersion(request.getSchemaVersion());
+        model.setTypeDefinitions(request.getTypeDefinitions());
+        model.setConditions(request.getConditions());
+
+        return model;
     }
 
     /**
@@ -196,17 +211,41 @@ public final class ModelDefinition
     }
 
     /**
-     * Create a WriteAuthorizationModelRequest from a map representation.
+     * Create an AuthorizationModel from a map representation.
      *
      * @param modelMap The map representation of a model definition
-     * @return The parsed WriteAuthorizationModelRequest
+     * @return The parsed AuthorizationModel
      * @throws IOException if conversion fails
      */
-    public static WriteAuthorizationModelRequest fromMap(Map<String, Object> modelMap)
+    public static AuthorizationModel fromMap(Map<String, Object> modelMap)
             throws IOException
     {
         String jsonString = JSON_MAPPER.writeValueAsString(modelMap);
-        return JSON_MAPPER.readValue(jsonString, WriteAuthorizationModelRequest.class);
+        WriteAuthorizationModelRequest request = JSON_MAPPER.readValue(jsonString, WriteAuthorizationModelRequest.class);
+
+        // Convert to AuthorizationModel
+        AuthorizationModel model = new AuthorizationModel();
+        model.setSchemaVersion(request.getSchemaVersion());
+        model.setTypeDefinitions(request.getTypeDefinitions());
+        model.setConditions(request.getConditions());
+
+        return model;
+    }
+
+    /**
+     * Convert an AuthorizationModel to a WriteAuthorizationModelRequest.
+     * This is useful when you need to make API calls that require a request object.
+     *
+     * @param model The AuthorizationModel to convert
+     * @return The corresponding WriteAuthorizationModelRequest
+     */
+    public static WriteAuthorizationModelRequest toWriteRequest(AuthorizationModel model)
+    {
+        WriteAuthorizationModelRequest request = new WriteAuthorizationModelRequest();
+        request.setSchemaVersion(model.getSchemaVersion());
+        request.setTypeDefinitions(model.getTypeDefinitions());
+        request.setConditions(model.getConditions());
+        return request;
     }
 
     /**
@@ -253,6 +292,30 @@ public final class ModelDefinition
 
         Yaml yaml = new Yaml(options);
         return yaml.dump(modelMap);
+    }
+
+    /**
+     * Get a WriteAuthorizationModelRequest from type definitions and conditions.
+     *
+     * @param schemaVersion The schema version
+     * @param typeDefinitions The list of type definitions
+     * @param conditions The map of conditions
+     * @return The WriteAuthorizationModelRequest
+     */
+    public static WriteAuthorizationModelRequest createRequest(
+            String schemaVersion,
+            List<TypeDefinition> typeDefinitions,
+            Map<String, Condition> conditions)
+    {
+        WriteAuthorizationModelRequest request = new WriteAuthorizationModelRequest();
+        request.setSchemaVersion(schemaVersion);
+        request.setTypeDefinitions(typeDefinitions);
+
+        if (conditions != null && !conditions.isEmpty()) {
+            request.setConditions(conditions);
+        }
+
+        return request;
     }
 
     /**
@@ -526,30 +589,6 @@ public final class ModelDefinition
 
         // Default to string if we don't recognize the type
         return "string";
-    }
-
-    /**
-     * Get a WriteAuthorizationModelRequest from type definitions and conditions.
-     *
-     * @param schemaVersion The schema version
-     * @param typeDefinitions The list of type definitions
-     * @param conditions The map of conditions
-     * @return The WriteAuthorizationModelRequest
-     */
-    public static WriteAuthorizationModelRequest createRequest(
-            String schemaVersion,
-            List<TypeDefinition> typeDefinitions,
-            Map<String, Condition> conditions)
-    {
-        WriteAuthorizationModelRequest request = new WriteAuthorizationModelRequest();
-        request.setSchemaVersion(schemaVersion);
-        request.setTypeDefinitions(typeDefinitions);
-
-        if (conditions != null && !conditions.isEmpty()) {
-            request.setConditions(conditions);
-        }
-
-        return request;
     }
 
     static {

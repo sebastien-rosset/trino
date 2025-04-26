@@ -202,19 +202,22 @@ public class OpenFgaModelManager
     {
         try {
             // Parse the model first to verify its structure
-            WriteAuthorizationModelRequest request;
+            AuthorizationModel model;
             try {
-                request = ModelDefinition.fromJson(modelJson);
+                model = ModelDefinition.fromJson(modelJson);
             }
             catch (IOException e) {
                 // If JSON parsing fails, try YAML
                 try {
-                    request = ModelDefinition.fromYaml(modelJson);
+                    model = ModelDefinition.fromYaml(modelJson);
                 }
                 catch (IOException e2) {
                     return new ModelValidationResult(false, Optional.of("Failed to parse model: " + e.getMessage()));
                 }
             }
+
+            // Convert to WriteAuthorizationModelRequest for API call
+            WriteAuthorizationModelRequest request = ModelDefinition.toWriteRequest(model);
 
             // The OpenFGA SDK doesn't provide a validation-only method,
             // so we perform validation by attempting to create a temporary model
@@ -323,24 +326,28 @@ public class OpenFgaModelManager
             }
 
             String content = new String(inputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            AuthorizationModel model;
 
             // Determine if it's YAML or JSON based on file extension or content
             if (path.endsWith(".yaml") || path.endsWith(".yml")) {
-                return ModelDefinition.fromYaml(content);
+                model = ModelDefinition.fromYaml(content);
             }
             else if (path.endsWith(".json")) {
-                return ModelDefinition.fromJson(content);
+                model = ModelDefinition.fromJson(content);
             }
             else {
                 // Try to detect format from content
                 String trimmed = content.trim();
                 if (trimmed.startsWith("{")) {
-                    return ModelDefinition.fromJson(content);
+                    model = ModelDefinition.fromJson(content);
                 }
                 else {
-                    return ModelDefinition.fromYaml(content);
+                    model = ModelDefinition.fromYaml(content);
                 }
             }
+
+            // Convert to WriteAuthorizationModelRequest for API calls
+            return ModelDefinition.toWriteRequest(model);
         }
     }
 
@@ -360,7 +367,8 @@ public class OpenFgaModelManager
 
             // We know the default model is YAML
             String content = new String(inputStream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
-            return ModelDefinition.fromYaml(content);
+            AuthorizationModel model = ModelDefinition.fromYaml(content);
+            return ModelDefinition.toWriteRequest(model);
         }
     }
 
@@ -455,19 +463,22 @@ public class OpenFgaModelManager
     {
         try {
             // Try to parse as JSON first, then fall back to YAML
-            WriteAuthorizationModelRequest request;
+            AuthorizationModel model;
             try {
-                request = ModelDefinition.fromJson(modelString);
+                model = ModelDefinition.fromJson(modelString);
             }
             catch (IOException e) {
                 // If JSON parsing fails, try YAML
                 try {
-                    request = ModelDefinition.fromYaml(modelString);
+                    model = ModelDefinition.fromYaml(modelString);
                 }
                 catch (IOException e2) {
                     throw new RuntimeException("Failed to parse model as either JSON or YAML", e2);
                 }
             }
+
+            // Convert to WriteAuthorizationModelRequest for API call
+            WriteAuthorizationModelRequest request = ModelDefinition.toWriteRequest(model);
             return createModelVersion(request);
         }
         catch (Exception e) {
