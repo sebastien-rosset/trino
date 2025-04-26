@@ -285,11 +285,11 @@ public final class ModelDefinition
 
         // Add model header with schema version if present
         if (model.getSchemaVersion() != null && !model.getSchemaVersion().isEmpty()) {
-            dsl.append("model\n");
-            dsl.append("  schema ").append(model.getSchemaVersion()).append("\n");
+            dsl.append("model schema ").append(model.getSchemaVersion()).append("\n");
         }
         else {
-            dsl.append("model\n");
+            // Default to schema 1.2 if not specified
+            dsl.append("model schema 1.2\n");
         }
 
         // Process type definitions
@@ -298,7 +298,30 @@ public final class ModelDefinition
 
             for (TypeDefinition typeDef : model.getTypeDefinitions()) {
                 dsl.append("\n");
-                dsl.append("type ").append(typeDef.getType()).append("\n");
+                dsl.append("type ").append(typeDef.getType());
+
+                // Get module and source info from metadata for schema 1.2+
+                if (typeDef.getMetadata() != null) {
+                    String module = typeDef.getMetadata().getModule();
+                    dev.openfga.sdk.api.model.SourceInfo sourceInfo = typeDef.getMetadata().getSourceInfo();
+
+                    // Add module and source info comment if available (for schema 1.2)
+                    if (module != null || sourceInfo != null) {
+                        dsl.append(" ## ");
+                        if (module != null) {
+                            dsl.append("module = ").append(module);
+                        }
+
+                        if (sourceInfo != null && sourceInfo.getFile() != null) {
+                            if (module != null) {
+                                dsl.append("; ");
+                            }
+                            dsl.append("filename = ").append(sourceInfo.getFile());
+                        }
+                    }
+                }
+
+                dsl.append("\n");
 
                 // Process relations
                 if (typeDef.getRelations() != null && !typeDef.getRelations().isEmpty()) {
@@ -312,33 +335,39 @@ public final class ModelDefinition
                         // Use the 'define' keyword as specified in the OpenFGA configuration language
                         dsl.append("    define ").append(relationName).append(": ");
 
-                        // Convert the userset to DSL syntax
-                        dsl.append(usersetToDSL(userset));
-                        dsl.append("\n");
-                    }
-                }
+                        // Add the directly_related_user_types notation if available
+                        if (typeDef.getMetadata() != null &&
+                                typeDef.getMetadata().getRelations() != null &&
+                                typeDef.getMetadata().getRelations().containsKey(relationName) &&
+                                typeDef.getMetadata().getRelations().get(relationName).getDirectlyRelatedUserTypes() != null &&
+                                !typeDef.getMetadata().getRelations().get(relationName).getDirectlyRelatedUserTypes().isEmpty()) {
+                            // Convert the directly_related_user_types to DSL bracket notation
+                            dsl.append("[");
+                            dsl.append(relationReferenceListToBracketNotation(
+                                    typeDef.getMetadata().getRelations().get(relationName).getDirectlyRelatedUserTypes()));
+                            dsl.append("]");
 
-                // Process metadata if present
-                if (typeDef.getMetadata() != null) {
-                    dsl.append("  metadata\n");
-
-                    // Relations metadata
-                    if (typeDef.getMetadata().getRelations() != null && !typeDef.getMetadata().getRelations().isEmpty()) {
-                        dsl.append("    relations\n");
-
-                        for (Map.Entry<String, dev.openfga.sdk.api.model.RelationMetadata> metadata :
-                                typeDef.getMetadata().getRelations().entrySet()) {
-                            String relationName = metadata.getKey();
-                            dev.openfga.sdk.api.model.RelationMetadata relationMetadata = metadata.getValue();
-
-                            dsl.append("      ").append(relationName).append("\n");
-
-                            if (relationMetadata.getDirectlyRelatedUserTypes() != null) {
-                                dsl.append("        directly_related_user_types: ");
-                                dsl.append(directlyRelatedUserTypesToDSL(relationMetadata.getDirectlyRelatedUserTypes()));
-                                dsl.append("\n");
+                            // If we have both directly related user types and a computed relationship, add 'or'
+                            if (userset.getThis() == null && userset.getUnion() == null &&
+                                    (userset.getComputedUserset() != null ||
+                                            userset.getTupleToUserset() != null ||
+                                            userset.getIntersection() != null ||
+                                            userset.getDifference() != null)) {
+                                dsl.append(" or ");
                             }
                         }
+
+                        // Convert the userset to DSL syntax if it's not a simple "this" (which is already represented by square brackets)
+                        if (userset.getThis() == null ||
+                                (typeDef.getMetadata() == null ||
+                                        typeDef.getMetadata().getRelations() == null ||
+                                        !typeDef.getMetadata().getRelations().containsKey(relationName) ||
+                                        typeDef.getMetadata().getRelations().get(relationName).getDirectlyRelatedUserTypes() == null ||
+                                        typeDef.getMetadata().getRelations().get(relationName).getDirectlyRelatedUserTypes().isEmpty())) {
+                            dsl.append(usersetToDSL(userset));
+                        }
+
+                        dsl.append("\n");
                     }
                 }
             }
@@ -452,8 +481,43 @@ public final class ModelDefinition
     }
 
     /**
-     * Convert directly related user types to DSL format
+     * Convert a list of RelationReference objects to DSL bracket notation
+     * For example: [user, group#member]
      */
+    private static String relationReferenceListToBracketNotation(List<dev.openfga.sdk.api.model.RelationReference> types)
+    {
+        if (types == null || types.isEmpty()) {
+            return "";
+        }
+
+        return types.stream()
+                .map(ref -> {
+                    StringBuilder sb = new StringBuilder();
+
+                    if (ref.getType() != null) {
+                        sb.append(ref.getType());
+
+                        // Handle wildcard
+                        if (ref.getWildcard() != null) {
+                            sb.append(":*");
+                        }
+                        // Handle relation
+                        else if (ref.getRelation() != null) {
+                            sb.append("#").append(ref.getRelation());
+                        }
+                    }
+
+                    return sb.toString();
+                })
+                .collect(java.util.stream.Collectors.joining(", "));
+    }
+
+    /**
+     * Convert directly related user types to DSL format (verbose JSON-like format)
+     *
+     * @deprecated Use relationReferenceListToBracketNotation instead for DSL output
+     */
+    @Deprecated
     private static String directlyRelatedUserTypesToDSL(List<dev.openfga.sdk.api.model.RelationReference> types)
     {
         if (types == null || types.isEmpty()) {
