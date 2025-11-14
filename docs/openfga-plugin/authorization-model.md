@@ -21,6 +21,7 @@ The Trino plugin sends authorization check requests to an OpenFGA server using t
 ```
 
 **TupleKey Fields**:
+
 - `user`: Subject (format: "type:id" e.g., "user:alice", "group:engineering#member")
 - `relation`: Permission/relationship (e.g., "select", "discover", "admin")
 - `object`: Resource (format: "type:id" e.g., "table:sales/customer/orders", "catalog:sales")
@@ -253,6 +254,7 @@ data_row:
 ```
 
 **API Field Specifications**:
+
 - `user`: string (max 512 bytes, example: "user:anne")
 - `relation`: string (pattern: `^[^:#@\\s]{1,50}$`, example: "reader")
 - `object`: string (pattern: `^[^\\s]{2,256}$`, example: "document:2021-budget")
@@ -790,6 +792,7 @@ type data_field
 This authorization model design is based on official OpenFGA specifications and standards:
 
 ### Core Documentation
+
 - **OpenFGA Configuration Language**: https://openfga.dev/docs/configuration-language
 - **OpenFGA Concepts**: https://openfga.dev/docs/concepts
 - **Relationship Tuples**: https://openfga.dev/docs/concepts#what-is-a-relationship-tuple
@@ -797,16 +800,19 @@ This authorization model design is based on official OpenFGA specifications and 
 - **Modeling Guide**: https://openfga.dev/docs/modeling
 
 ### API Specifications
+
 - **OpenFGA API**: https://openfga.dev/api/service
 - **Protocol Buffers**: https://github.com/openfga/api/blob/main/openfga/v1/openfga.proto
 - **Language Grammar**: https://github.com/openfga/language/blob/main/OpenFGALexer.g4
 
 ### Implementation Resources
+
 - **OpenFGA SDKs**: https://github.com/openfga
 - **OpenFGA Server**: https://github.com/openfga/openfga
 - **Community**: https://openfga.dev/community
 
 ### Standards Compliance
+
 - **Zanzibar Paper**: https://research.google/pubs/pub48190/ (Google's authorization system)
 - **Relationship-Based Access Control (ReBAC)**: Foundation for OpenFGA's approach
 
