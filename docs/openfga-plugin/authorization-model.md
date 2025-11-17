@@ -32,6 +32,7 @@ condition row_filter_condition(user_tenant: string, resource_tenant: string) {
 ```
 
 **OpenFGA Tuple Examples**:
+
 ```json
 // Basic select permission
 {
@@ -82,6 +83,7 @@ condition ownership_condition(user_id: string, resource_owner: string) {
 ```
 
 **OpenFGA Tuple Examples**:
+
 ```json
 // Basic modification permissions
 {
@@ -132,6 +134,7 @@ type table
 ```
 
 **OpenFGA Tuple Examples**:
+
 ```json
 // Schema creation permission
 {
@@ -175,6 +178,7 @@ type table
 ```
 
 **OpenFGA Tuple Examples**:
+
 ```json
 // Table discovery permission
 {
@@ -275,6 +279,7 @@ Each type must support relations corresponding to Trino operations:
 ### Conditional Access Support
 
 OpenFGA conditions enable:
+
 - **Row filtering**: `conditional_select` with filter conditions
 - **Ownership-based updates**: `conditional_update`/`conditional_delete` with ownership checks
 - **Attribute-based access**: Any condition using trusted attribute context
