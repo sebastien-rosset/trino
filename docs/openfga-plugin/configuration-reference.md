@@ -429,54 +429,111 @@ openfga.logging.authorization.decisions=true
 openfga.authorization.model.validation.strict=true
 ```
 
-## User Attribute Mapping
+## Generic User Attribute Mapping Framework
 
-### Identity Provider Integration
+### Schema-Driven Identity Provider Integration
 
 ```yaml
-# User attribute mapping configuration
-user_attribute_mapping:
-  tenant_id:
-    source: "identity.extra_credentials.tenant_id"
+# Generic attribute mapping schema - organizations define their own attribute names
+user_attribute_mapping_schema:
+  # Isolation/Tenancy attribute (organization chooses name and source)
+  {org_isolation_attribute}:  # Could be: tenant_id, account_id, organization_id, workspace_id, etc.
+    source: "identity.extra_credentials.{org_credential_key}"
     type: "string"
     required: true
+    description: "Primary isolation boundary for multi-tenant access control"
 
-  role:
+  # Authorization role attribute (organization chooses name and processing)
+  {org_role_attribute}:  # Could be: role, primary_role, job_function, authorization_level, etc.
     source: "identity.groups"
     type: "string"
-    transformer: "extract_primary_role"
-    default: "user"
+    transformer: "{org_role_transformer}"
+    default: "{org_default_role}"
+    description: "Primary authorization role for access control decisions"
 
-  department:
-    source: "identity.extra_credentials.department"
+  # Organizational unit attribute (organization chooses name and source)
+  {org_unit_attribute}:  # Could be: department, division, business_unit, team, etc.
+    source: "identity.extra_credentials.{org_unit_key}"
     type: "string"
-    default: "unknown"
+    default: "{org_default_unit}"
+    description: "Organizational unit for department-based access control"
 
-  authorized_regions:
-    source: "identity.extra_credentials.authorized_regions"
+  # Geographic/Location attribute (organization chooses name and structure)
+  {org_location_attribute}:  # Could be: authorized_regions, locations, territories, offices, etc.
+    source: "identity.extra_credentials.{org_location_key}"
     type: "set<string>"
     default: []
+    description: "Geographic or location-based access boundaries"
 
-  security_clearance:
-    source: "identity.extra_credentials.security_clearance"
+  # Security/Classification attribute (organization chooses name and mapping)
+  {org_security_attribute}:  # Could be: security_clearance, access_level, classification_tier, etc.
+    source: "identity.extra_credentials.{org_security_key}"
     type: "integer"
-    transformer: "parse_clearance_level"
-    default: 1
+    transformer: "{org_security_transformer}"
+    default: {org_default_security_level}
+    description: "Security clearance or classification level"
 
-# Attribute transformers
-transformers:
-  extract_primary_role:
+# Generic transformer definitions (organizations define their own)
+attribute_transformers:
+  {org_role_transformer}:  # Organization defines transformer name and logic
     type: "regex"
-    pattern: "^role:(.+)$"
+    pattern: "{org_role_pattern}"  # Organization's role extraction pattern
     group: 1
+    description: "Extracts primary role from identity groups"
 
-  parse_clearance_level:
+  {org_security_transformer}:  # Organization defines security level mapping
     type: "mapping"
-    mappings:
-      "L1": 1
-      "L2": 2
-      "L3": 3
-      "L4": 4
+    mappings: {org_security_mappings}  # Organization's security level mappings
+    description: "Maps security clearance strings to numeric levels"
+
+# Example configurations for different organizations:
+example_attribute_mappings:
+  # Healthcare organization
+  healthcare_example:
+    facility_id:
+      source: "identity.extra_credentials.healthcare_facility"
+      type: "string"
+      required: true
+    provider_type:
+      source: "identity.groups"
+      transformer: "extract_provider_role"
+      default: "staff"
+    authorized_locations:
+      source: "identity.extra_credentials.facility_access"
+      type: "set<string>"
+      default: []
+
+  # Financial services organization
+  financial_example:
+    trading_desk:
+      source: "identity.extra_credentials.desk_assignment"
+      type: "string"
+      required: true
+    risk_level_authorization:
+      source: "identity.extra_credentials.risk_clearance"
+      type: "integer"
+      transformer: "parse_risk_level"
+      default: 1
+    authorized_markets:
+      source: "identity.extra_credentials.market_access"
+      type: "set<string>"
+      default: []
+
+  # Government/Defense organization
+  government_example:
+    security_clearance:
+      source: "identity.extra_credentials.clearance_level"
+      type: "integer"
+      transformer: "parse_clearance_level"
+      default: 1
+    department_code:
+      source: "identity.extra_credentials.dept_id"
+      type: "string"
+      required: true
+    classification_access:
+      source: "identity.extra_credentials.classification_level"
+      type: "string"
+      default: "unclassified"
 ```
 
 ## Troubleshooting Configuration

@@ -30,14 +30,16 @@ VALUES ('server-1', 'compute')
 ```
 
 ```sql
--- Modified Query (after configured attribute injection)
--- NOTE: Attribute names and sources are configured per deployment:
-INSERT INTO assets (name, type, {configured_attr_1}, {configured_attr_2}, {configured_attr_3})
-VALUES ('server-1', 'compute', {resolved_value_1}, {resolved_value_2}, {resolved_value_3})
+-- Modified Query (after schema-driven attribute injection)
+-- All attribute names and values come from external configuration:
+INSERT INTO assets (name, type, {{attr_1.name}}, {{attr_2.name}}, {{attr_3.name}})
+VALUES ('server-1', 'compute', {{attr_1.value}}, {{attr_2.value}}, {{attr_3.value}})
 
--- Example with multi-tenancy configuration:
--- INSERT INTO assets (name, type, tenant_id, created_by, created_at)
--- VALUES ('server-1', 'compute', 'tenant_123', 'alice', CURRENT_TIMESTAMP)
+-- Configuration-driven results (examples of possible configurations):
+-- Multi-tenancy: INSERT INTO assets (name, type, tenant_id, created_by, created_at)
+-- Healthcare: INSERT INTO assets (name, type, facility_id, patient_group, compliance_flag)
+-- Financial: INSERT INTO assets (name, type, trading_desk, risk_level, audit_id)
+-- Government: INSERT INTO assets (name, type, clearance_level, department_id, classification)
 ```
 
 ### Key Principles
@@ -163,49 +165,62 @@ public class IdentityAttributesProvider implements AttributeProvider {
 }
 ```
 
-**Configuration Examples for Different Authentication Methods:**
+**Generic Configuration Schema for All Authentication Methods:**
 
 ```yaml
-# NOTE: Attribute names (tenant_id, department, user_name) are examples only.
-# Organizations define their own attribute names based on their use cases:
-# - Multi-tenancy: tenant_id, account_id, org_id
-# - Document management: security_clearance, classification_level, access_group
-# - Healthcare: facility_id, patient_group, provider_type
-# - Financial: trading_desk, compliance_zone, risk_level
+# Attribute Schema Definition - Organizations define their own attribute names
+# Framework supports any attribute name/source combination
+attribute_schema:
+  attribute_sources:
+    # Schema-driven identity provider - works with ALL Trino auth methods
+    identity_provider:
+      type: "identity_attributes"
+      supports: ["jwt_claims", "ldap_attributes", "identity_fields", "extra_credentials"]
 
-attributes:
-  # Example: JWT/OAuth2 authentication
-  tenant_id:  # Organization configures their attribute name
-    provider: identity_attributes
-    config:
-      source: "jwt_claims"
-      claim_path: "custom.tenant_id"  # Path to claim in JWT
+    # Schema-driven external providers
+    database_provider:
+      type: "database_lookup"
+      supports: ["sql_queries", "batch_resolution"]
+
+    computed_provider:
+      type: "computed_values"
+      supports: ["expressions", "functions", "templates"]
+
+# Example configurations (attribute names are organization-specific):
+attribute_definitions:
+  # Multi-tenancy use case example
+  isolation_attribute:  # Organization defines name (could be tenant_id, account_id, etc.)
+    provider: identity_provider
+    source_config:
+      type: "jwt_claims"
+      path: "custom.tenant_identifier"  # JWT claim path
       required: true
-    cache: session
+    cache_policy: "session"
 
-  # Example: LDAP authentication
-  department:  # Organization configures their attribute name
-    provider: identity_attributes
-    config:
-      source: "ldap_attributes"
-      attribute_name: "department"  # LDAP attribute name
-      default: "unknown"
-    cache: session
+  # Healthcare use case example
+  facility_access:  # Organization defines name (could be facility_id, location, etc.)
+    provider: identity_provider
+    source_config:
+      type: "ldap_attributes"
+      attribute: "healthcareFacility"  # LDAP attribute
+      default: "none"
+    cache_policy: "session"
 
-  # Example: Universal identity attributes (all auth methods)
-  user_name:  # Organization configures their attribute name
-    provider: identity_attributes
-    config:
-      source: "identity"
-      attribute_name: "user"  # Trino Identity field
-    cache: session
+  # Government use case example
+  security_level:  # Organization defines name (could be clearance_level, classification, etc.)
+    provider: database_provider
+    source_config:
+      query: "SELECT clearance FROM user_security WHERE username = ?"
+      result_field: "clearance"
+      timeout: "5s"
+    cache_policy: "session"
 
-  user_groups:
-    provider: identity_attributes
-    config:
-      source: "identity"
-      attribute_name: "groups"
-    cache: session
+  # Audit use case example
+  audit_context:  # Organization defines name (could be tracking_id, session_info, etc.)
+    provider: computed_provider
+    source_config:
+      expression: "json_object('user', identity.user, 'timestamp', now())"
+    cache_policy: "query"
 ```
 
 #### Database Lookup Provider
@@ -231,25 +246,47 @@ public class DatabaseLookupProvider implements AttributeProvider {
 }
 ```
 
-**Configuration Example:**
+**Generic Configuration Schema:**
 ```yaml
-attributes:
-  security_clearance:
+# Schema-driven database lookups - attribute names defined by organization
+database_attribute_definitions:
+  # Government/Defense use case
+  {org_security_attr}:  # Organization defines: security_clearance, classification_level, etc.
     provider: database_lookup
     config:
-      datasource: "user_attributes_db"
-      query: "SELECT clearance_level FROM user_security WHERE username = ?"
-      result_column: "clearance_level"
+      datasource: "{org_datasource_name}"
+      query: "SELECT {org_result_field} FROM {org_table} WHERE username = ?"
+      result_column: "{org_result_field}"
     cache: session
 
-  authorized_regions:
+  # Geographic/Regional use case
+  {org_location_attr}:  # Organization defines: authorized_regions, locations, territories, etc.
     provider: database_lookup
     config:
-      datasource: "user_attributes_db"
-      query: "SELECT region FROM user_regions WHERE username = ?"
-      result_column: "region"
+      datasource: "{org_datasource_name}"
+      query: "SELECT {org_location_field} FROM {org_location_table} WHERE username = ?"
+      result_column: "{org_location_field}"
       multi_value: true
     cache: session
+
+# Example concrete configurations (showing flexibility):
+example_configurations:
+  # Healthcare organization
+  healthcare_facility_access:
+    provider: database_lookup
+    config:
+      datasource: "hcm_user_db"
+      query: "SELECT facility_code FROM provider_facilities WHERE provider_id = ?"
+      result_column: "facility_code"
+      multi_value: true
+
+  # Financial services
+  trading_desk_authorization:
+    provider: database_lookup
+    config:
+      datasource: "risk_management_db"
+      query: "SELECT desk_code FROM trader_assignments WHERE employee_id = ?"
+      result_column: "desk_code"
 ```
 
 #### Configuration File Provider
@@ -257,20 +294,37 @@ attributes:
 Loads attributes from configuration files:
 
 ```yaml
-attributes:
-  data_retention_days:
+# Generic configuration file schema - attribute names defined by organization
+config_file_attributes:
+  {org_retention_policy}:  # Organization defines: data_retention_days, retention_period, archive_schedule, etc.
     provider: config_file
     config:
-      file: "/etc/trino/data-retention.yaml"
-      key_path: "default.retention_days"
+      file: "/etc/trino/{org_policy_file}"
+      key_path: "{org_config_path}"
     cache: global
 
-  compliance_tags:
+  {org_compliance_data}:  # Organization defines: compliance_tags, regulatory_flags, audit_requirements, etc.
     provider: config_file
     config:
-      file: "/etc/trino/compliance.yaml"
-      key_path: "tags.required"
+      file: "/etc/trino/{org_compliance_file}"
+      key_path: "{org_compliance_path}"
     cache: global
+
+# Example configurations for different industries:
+example_file_configurations:
+  # Healthcare compliance
+  hipaa_data_classification:
+    provider: config_file
+    config:
+      file: "/etc/trino/hipaa-config.yaml"
+      key_path: "classification.default_level"
+
+  # Financial regulations
+  sox_audit_requirements:
+    provider: config_file
+    config:
+      file: "/etc/trino/financial-compliance.yaml"
+      key_path: "sox.audit_flags"
 ```
 
 #### REST API Provider
@@ -278,41 +332,75 @@ attributes:
 Fetches attributes from external REST APIs:
 
 ```yaml
-attributes:
-  user_permissions:
+# Generic REST API schema - attribute names defined by organization
+rest_api_attributes:
+  {org_authorization_data}:  # Organization defines: user_permissions, access_rights, entitlements, etc.
     provider: rest_api
     config:
-      url: "https://auth.company.com/api/users/{username}/permissions"
+      url: "https://{org_auth_service}/api/users/{username}/{org_endpoint}"
       method: "GET"
       headers:
-        Authorization: "Bearer ${service_token}"
-      timeout: "5s"
+        Authorization: "Bearer ${org_service_token}"
+      timeout: "{org_timeout}"
     cache: session
+
+# Example REST API configurations:
+example_api_configurations:
+  # Enterprise identity provider
+  active_directory_groups:
+    provider: rest_api
+    config:
+      url: "https://graph.microsoft.com/v1.0/users/{username}/memberOf"
+      method: "GET"
+      headers:
+        Authorization: "Bearer ${azure_token}"
+
+  # Custom authorization service
+  business_unit_access:
+    provider: rest_api
+    config:
+      url: "https://authz.company.com/api/user-entitlements/{username}"
+      method: "GET"
 ```
 
 #### Computed Value Provider
 
-Generates attributes using expressions or functions:
+Generates attributes using configurable expressions:
 
 ```yaml
-attributes:
-  current_timestamp:
+# Generic computed value schema - attribute names defined by organization
+computed_attributes:
+  {org_timestamp_attr}:  # Organization defines: current_timestamp, access_time, audit_timestamp, etc.
     provider: computed
     config:
       expression: "now()"
     cache: none
 
-  query_hash:
+  {org_query_tracking}:  # Organization defines: query_hash, request_id, session_fingerprint, etc.
     provider: computed
     config:
       expression: "sha256(${query_text})"
     cache: query
 
-  session_id:
+  {org_session_identifier}:  # Organization defines: session_id, tracking_token, correlation_id, etc.
     provider: computed
     config:
       expression: "uuid()"
     cache: session
+
+# Example computed configurations:
+example_computed_configurations:
+  # Audit trail generation
+  compliance_audit_context:
+    provider: computed
+    config:
+      expression: "json_object('user', identity.user, 'timestamp', now(), 'query_id', query.id)"
+
+  # Data lineage tracking
+  data_access_fingerprint:
+    provider: computed
+    config:
+      expression: "concat('access_', sha256(concat(identity.user, query.tables, now())))"
 ```
 
 ## Attribute Resolution Engine
@@ -480,56 +568,60 @@ VALUES ('server-1', 'compute', 'active', 'tenant_123', 'alice', CURRENT_TIMESTAM
 
 ## Configuration Schema
 
-### Attribute Definition
+### Generic Attribute Schema Configuration
 
 ```yaml
-# /etc/trino/attribute-injection.yaml
+# /etc/trino/attribute-injection.yaml - Schema-driven configuration
 attribute_injection:
   enabled: true
 
-  # Global settings
+  # Global framework settings
   performance:
     resolution_timeout: "10s"
     cache_enabled: true
     batch_resolution: true
 
-  # Attribute definitions
-  attributes:
-    tenant_id:
+  # Schema-driven attribute definitions (attribute names defined by organization)
+  attribute_schema:
+    # Multi-tenancy isolation attribute (organization chooses name)
+    {org_isolation_attribute}:  # Could be: tenant_id, account_id, organization_id, workspace_id, etc.
       type: varchar
       provider: identity_attributes
       config:
         source: "jwt_claims"
-        claim_path: "tenant_id"
+        claim_path: "{org_jwt_claim_path}"  # Organization's JWT claim structure
         required: true
       cache: session
       access_control:
-        - "role:admin"
-        - "role:security_officer"
+        - "role:{org_admin_role}"
+        - "role:{org_security_role}"
 
-    security_clearance:
+    # Authorization level attribute (organization chooses name)
+    {org_authorization_level}:  # Could be: security_clearance, access_level, permission_tier, etc.
       type: int
       provider: database_lookup
       config:
-        datasource: "hr_db"
-        query: "SELECT clearance FROM employees WHERE email = ?"
-        result_column: "clearance"
+        datasource: "{org_datasource}"
+        query: "SELECT {org_level_column} FROM {org_user_table} WHERE {org_user_key} = ?"
+        result_column: "{org_level_column}"
         timeout: "5s"
       cache: session
-      fallback: 0
+      fallback: {org_default_level}
 
-    data_source:
+    # Metadata tracking attribute (organization chooses name)
+    {org_metadata_attribute}:  # Could be: data_source, access_context, lineage_info, etc.
       type: varchar
       provider: computed
       config:
-        expression: "'${catalog}.${schema}'"
+        expression: "'{org_expression_template}'"  # Organization's metadata expression
       cache: query
 
-    compliance_labels:
+    # Compliance attribute (organization chooses name)
+    {org_compliance_attribute}:  # Could be: compliance_labels, regulatory_tags, audit_flags, etc.
       type: array<varchar>
       provider: rest_api
       config:
-        url: "https://compliance.company.com/api/labels/{tenant_id}"
+        url: "{org_compliance_api_url}"
         method: "GET"
         timeout: "3s"
       cache: session

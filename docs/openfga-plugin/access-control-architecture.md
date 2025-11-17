@@ -56,35 +56,41 @@ condition select_column_condition(user_role: string, column_name: string) {
 }
 ```
 
-**Example Authorization Tuples:**
+**Example Authorization Tuples (Schema-Driven):**
 
 ```json
-// Column-level access control
+// Column-level access control (attribute names configurable)
 {
-  "user": "role:hr_manager#member",
+  "user": "role:{org_role_name}#member",
   "relation": "select",
-  "object": "data_field:employees.salary"
+  "object": "data_field:{org_table}.{org_sensitive_field}"
 }
 
-// Row-level access with conditions
+// Row-level access with configurable conditions
 {
-  "user": "user:alice",
+  "user": "user:{username}",
   "relation": "select",
-  "object": "table:customer_orders",
+  "object": "table:{org_data_table}",
   "condition": {
-    "name": "tenant_filter",
+    "name": "{org_isolation_condition}",
     "context": {
-      "user_tenant_id": "tenant_123"
+      "{org_isolation_attribute}": "{org_isolation_value}"
     }
   }
 }
 
-// Schema-level access control
+// Schema-level access control (organization-specific naming)
 {
-  "user": "user:alice",
+  "user": "user:{username}",
   "relation": "discover",
-  "object": "schema:finance"
+  "object": "schema:{org_schema_name}"
 }
+
+// Generic examples showing flexibility:
+// Healthcare: data_field:patient_records.ssn, condition: facility_access
+// Financial: data_field:trades.customer_id, condition: trading_desk_filter
+// Government: data_field:personnel.clearance, condition: security_level_check
+// SaaS: data_field:accounts.billing_info, condition: tenant_isolation
 ```
 
 ### Entity Access Control Mode
