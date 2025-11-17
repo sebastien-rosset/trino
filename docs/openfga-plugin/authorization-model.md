@@ -212,6 +212,7 @@ type user_role
 ```
 
 **OpenFGA Tuple Examples**:
+
 ```json
 // Grant permission management
 {

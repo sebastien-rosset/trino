@@ -13,6 +13,7 @@ This plugin is in **advanced design phase** with **generic attribute framework a
 ## Critical Architectural Achievement
 
 **Framework Flexibility Validated**: The generic attribute injection framework now supports:
+
 - **Healthcare**: facility_id, patient_group, provider_type, hipaa_classification
 - **Financial**: trading_desk, risk_level, compliance_zone, market_access
 - **Government**: clearance_level, department_id, classification, security_zone

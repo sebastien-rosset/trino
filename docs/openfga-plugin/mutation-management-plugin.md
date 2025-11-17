@@ -410,34 +410,40 @@ mutation_policies:
 ### Example Transformations
 
 **Original INSERT (missing tenant_id):**
+
 ```sql
 INSERT INTO orders (customer_id, amount, order_date)
 VALUES (123, 99.99, '2024-01-15');
 ```
 
 **Rewritten INSERT (with trusted columns):**
+
 ```sql
 INSERT INTO orders (customer_id, amount, order_date, tenant_id, created_by, created_at)
 VALUES (123, 99.99, '2024-01-15', 'tenant_abc', 'user123', CURRENT_TIMESTAMP);
 ```
 
 **Original INSERT (malicious tenant_id):**
+
 ```sql
 INSERT INTO orders (customer_id, amount, tenant_id, order_date)
 VALUES (123, 99.99, 'tenant_xyz', '2024-01-15');  -- Different tenant!
 ```
 
 **Validation Error:**
+
 ```
 AccessDeniedException: Cannot insert data for tenant 'tenant_xyz' - user belongs to tenant 'tenant_abc'
 ```
 
 **Original UPDATE (unrestricted):**
+
 ```sql
 UPDATE orders SET amount = 109.99 WHERE order_id = 456;
 ```
 
 **Rewritten UPDATE (with tenant isolation):**
+
 ```sql
 UPDATE orders SET amount = 109.99
 WHERE order_id = 456 AND tenant_id = 'tenant_abc';
@@ -582,6 +588,7 @@ public class ColumnInjectionPolicy {
 **Expected Impact**: 5-15ms per mutation statement
 
 **Mitigation Strategies**:
+
 1. **Authorization Model Caching**: Pre-load and cache OpenFGA authorization model
 2. **AST Template Caching**: Cache common rewrite patterns
 3. **Batch Validation**: Validate multiple columns in single operations
